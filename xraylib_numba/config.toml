@@ -1,0 +1,150 @@
+[xrl]
+
+
+
+
+[xrl_np]
+[xrl_np.AtomicLevelWidth]
+parallel = true
+[xrl_np.AtomicWeight]
+parallel = true
+[xrl_np.AugerRate]
+parallel = true
+[xrl_np.AugerYield]
+parallel = true
+[xrl_np.CS_Compt]
+parallel = true
+[xrl_np.CS_Energy]
+parallel = true
+[xrl_np.CS_FluorLine]
+parallel = true
+[xrl_np.CS_FluorLine_Kissel]
+parallel = true
+[xrl_np.CS_FluorLine_Kissel_Cascade]
+parallel = true
+[xrl_np.CS_FluorLine_Kissel_Nonradiative_Cascade]
+parallel = true
+[xrl_np.CS_FluorLine_Kissel_Radiative_Cascade]
+parallel = true
+[xrl_np.CS_FluorLine_Kissel_no_Cascade]
+parallel = true
+[xrl_np.CS_FluorShell]
+parallel = true
+[xrl_np.CS_FluorShell_Kissel]
+parallel = true
+[xrl_np.CS_FluorShell_Kissel_Cascade]
+parallel = true
+[xrl_np.CS_FluorShell_Kissel_Nonradiative_Cascade]
+parallel = true
+[xrl_np.CS_FluorShell_Kissel_Radiative_Cascade]
+parallel = true
+[xrl_np.CS_FluorShell_Kissel_no_Cascade]
+parallel = true
+[xrl_np.CS_KN]
+parallel = true
+[xrl_np.CS_Photo]
+parallel = true
+[xrl_np.CS_Photo_Partial]
+parallel = true
+[xrl_np.CS_Photo_Total]
+parallel = true
+[xrl_np.CS_Rayl]
+parallel = true
+[xrl_np.CS_Total]
+parallel = true
+[xrl_np.CS_Total_Kissel]
+parallel = true
+[xrl_np.CSb_Compt]
+parallel = true
+[xrl_np.CSb_FluorLine]
+parallel = true
+[xrl_np.CSb_FluorLine_Kissel]
+parallel = true
+[xrl_np.CSb_FluorLine_Kissel_Cascade]
+parallel = true
+[xrl_np.CSb_FluorLine_Kissel_Nonradiative_Cascade]
+parallel = true
+[xrl_np.CSb_FluorLine_Kissel_Radiative_Cascade]
+parallel = true
+[xrl_np.CSb_FluorLine_Kissel_no_Cascade]
+parallel = true
+[xrl_np.CSb_FluorShell]
+parallel = true
+[xrl_np.CSb_FluorShell_Kissel]
+parallel = true
+[xrl_np.CSb_FluorShell_Kissel_Cascade]
+parallel = true
+[xrl_np.CSb_FluorShell_Kissel_Nonradiative_Cascade]
+parallel = true
+[xrl_np.CSb_FluorShell_Kissel_Radiative_Cascade]
+parallel = true
+[xrl_np.CSb_FluorShell_Kissel_no_Cascade]
+parallel = true
+[xrl_np.CSb_Photo]
+parallel = true
+[xrl_np.CSb_Photo_Partial]
+parallel = true
+[xrl_np.CSb_Photo_Total]
+parallel = true
+[xrl_np.CSb_Rayl]
+parallel = true
+[xrl_np.CSb_Total]
+parallel = true
+[xrl_np.CSb_Total_Kissel]
+parallel = true
+[xrl_np.ComptonEnergy]
+parallel = true
+[xrl_np.ComptonProfile]
+parallel = true
+[xrl_np.ComptonProfile_Partial]
+parallel = true
+[xrl_np.CosKronTransProb]
+parallel = true
+[xrl_np.DCSP_Compt]
+parallel = true
+[xrl_np.DCSP_KN]
+parallel = true
+[xrl_np.DCSP_Rayl]
+parallel = true
+[xrl_np.DCSP_Thoms]
+parallel = true
+[xrl_np.DCSPb_Compt]
+parallel = true
+[xrl_np.DCSPb_Rayl]
+parallel = true
+[xrl_np.DCS_Compt]
+parallel = true
+[xrl_np.DCS_KN]
+parallel = true
+[xrl_np.DCS_Rayl]
+parallel = true
+[xrl_np.DCS_Thoms]
+parallel = true
+[xrl_np.DCSb_Compt]
+parallel = true
+[xrl_np.DCSb_Rayl]
+parallel = true
+[xrl_np.EdgeEnergy]
+parallel = true
+[xrl_np.ElectronConfig]
+parallel = true
+[xrl_np.ElementDensity]
+parallel = true
+[xrl_np.FF_Rayl]
+parallel = true
+[xrl_np.Fi]
+parallel = true
+[xrl_np.Fii]
+parallel = true
+[xrl_np.FluorYield]
+parallel = true
+[xrl_np.JumpFactor]
+parallel = true
+[xrl_np.LineEnergy]
+parallel = true
+[xrl_np.MomentTransf]
+parallel = true
+[xrl_np.RadRate]
+parallel = true
+[xrl_np.SF_Compt]
+parallel = true
