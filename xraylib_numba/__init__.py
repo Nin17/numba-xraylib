@@ -1,6 +1,7 @@
 """_summary_
 """
 
+from .config import config
 from .xraylib_numba import (
     AtomicLevelWidth,
     AtomicWeight,
