@@ -8,8 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 import xraylib_numba.xraylib_numba as _xrl_nb
-
-config = _xrl_nb.config
+from .config import config
 
 # TODO: docstrings
 

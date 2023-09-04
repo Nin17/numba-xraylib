@@ -5,23 +5,14 @@
 
 import ctypes as ct
 from ctypes import util
-import os
-import sys
+
 
 import numba as nb
 import numpy as np
 import xraylib as xrl
 
-if sys.version_info < (3, 11):
-    import tomli as tomllib
-else:
-    import tomllib
+from .config import config
 
-PATH = os.path.dirname(__file__)
-CONFIG_PATH = os.path.join(PATH, "config.toml")
-
-with open(CONFIG_PATH, "rb") as f:
-    config = tomllib.load(f)
 
 # # Load the xraylib shared library
 _xrl = ct.CDLL(util.find_library("libxrl"))
