@@ -4,18 +4,20 @@
 # pylint: disable=invalid-name, too-many-arguments, not-an-iterable
 
 import ctypes as ct
-from ctypes import util
+import inspect
 
 
 import numba as nb
 import numpy as np
+import _xraylib
 import xraylib as xrl
 
 from .config import config
 
 
 # # Load the xraylib shared library
-_xrl = ct.CDLL(util.find_library("libxrl"))
+_xrl = ct.CDLL(inspect.getfile(_xraylib))
+
 
 # TODO: the other functions
 # TODO: AtomicNumberToSymbol
