@@ -1,4 +1,5 @@
-"""_summary_
+"""
+A numba compatible version of xraylib_np.
 """
 
 # pylint: disable=not-an-iterable, protected-access, invalid-name
@@ -15,17 +16,18 @@ from .config import config
 
 @nb.njit(**config["xrl_np"].get("AtomicWeight", {}))
 def AtomicWeight(Z: NDArray[np.int64]) -> NDArray[np.float64]:
-    """_summary_
+    """
+    Atomic weight of an element Z in g/mol.
 
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
 
     Returns
     -------
     NDArray[np.float64]
-        _description_
+        Atomic weight in g/mol
     """
     assert Z.ndim == 1
     output = np.empty(Z.size, dtype=np.float64)
@@ -36,17 +38,18 @@ def AtomicWeight(Z: NDArray[np.int64]) -> NDArray[np.float64]:
 
 @nb.njit(**config["xrl_np"].get("ElementDensity", {}))
 def ElementDensity(Z: NDArray[np.int64]) -> NDArray[np.float64]:
-    """_summary_
+    """
+    Density of an element Z at room temperature and pressure in g/cm³.
 
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
 
     Returns
     -------
     NDArray[np.float64]
-        _description_
+        Density in g/cm³
     """
     assert Z.ndim == 1
     output = np.empty(Z.size, dtype=np.float64)
@@ -62,7 +65,7 @@ def CS_KN(E: NDArray[np.float64]) -> NDArray[np.float64]:
     Parameters
     ----------
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -83,7 +86,7 @@ def DCS_Thoms(theta: NDArray[np.float64]) -> NDArray[np.float64]:
     Parameters
     ----------
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -106,9 +109,9 @@ def AtomicLevelWidth(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
 
     Returns
     -------
@@ -133,9 +136,10 @@ def AugerRate(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     auger_trans : NDArray[np.int64]
-        _description_
+        Macro identifying initial ionized shell and two resulting ejected
+        elctrons
 
     Returns
     -------
@@ -160,9 +164,9 @@ def AugerYield(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
 
     Returns
     -------
@@ -179,19 +183,21 @@ def AugerYield(
 
 
 @nb.njit(**config["xrl_np"].get("CosKronTransProb", {}))
-def CosKronTransProb(Z: NDArray[np.int64], trans: NDArray[np.int64]):
+def CosKronTransProb(
+    Z: NDArray[np.int64], trans: NDArray[np.int64]
+) -> NDArray[np.float64]:
     """_summary_
 
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     trans : NDArray[np.int64]
-        _description_
+        Transition type macro
 
     Returns
     -------
-    _type_
+    NDArray[np.float64]
         _description_
     """
     assert Z.ndim == 1
@@ -212,9 +218,9 @@ def EdgeEnergy(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
 
     Returns
     -------
@@ -239,9 +245,9 @@ def ElectronConfig(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
 
     Returns
     -------
@@ -266,9 +272,9 @@ def FluorYield(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
 
     Returns
     -------
@@ -293,9 +299,9 @@ def JumpFactor(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
 
     Returns
     -------
@@ -320,9 +326,9 @@ def LineEnergy(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
 
     Returns
     -------
@@ -347,9 +353,9 @@ def RadRate(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
 
     Returns
     -------
@@ -374,9 +380,9 @@ def ComptonEnergy(
     Parameters
     ----------
     E0 : NDArray[np.float64]
-        _description_
+        Photon energy before scattering in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -401,9 +407,9 @@ def DCS_KN(
     Parameters
     ----------
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -428,9 +434,9 @@ def DCSP_Thoms(
     Parameters
     ----------
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
     phi : NDArray[np.float64]
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -455,9 +461,9 @@ def MomentTransf(
     Parameters
     ----------
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -482,9 +488,9 @@ def ComptonProfile(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     pz : NDArray[np.float64]
-        _description_
+        Momentum in atomic units
 
     Returns
     -------
@@ -509,9 +515,9 @@ def CS_Compt(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -536,9 +542,9 @@ def CS_Energy(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -563,9 +569,9 @@ def CS_Photo(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -590,9 +596,9 @@ def CS_Photo_Total(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -617,9 +623,9 @@ def CS_Rayl(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -644,9 +650,9 @@ def CS_Total(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -671,9 +677,9 @@ def CS_Total_Kissel(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -698,9 +704,9 @@ def CSb_Compt(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -725,9 +731,9 @@ def CSb_Photo(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -752,9 +758,9 @@ def CSb_Photo_Total(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -779,9 +785,9 @@ def CSb_Rayl(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -806,9 +812,9 @@ def CSb_Total(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -833,9 +839,9 @@ def CSb_Total_Kissel(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -860,9 +866,9 @@ def FF_Rayl(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     q : NDArray[np.float64]
-        _description_
+        Momentum transfer in Å⁻¹
 
     Returns
     -------
@@ -887,9 +893,9 @@ def SF_Compt(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     q : NDArray[np.float64]
-        _description_
+        Momentum transfer in Å⁻¹
 
     Returns
     -------
@@ -912,9 +918,9 @@ def Fi(Z: NDArray[np.int64], E: NDArray[np.float64]) -> NDArray[np.float64]:
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -937,9 +943,9 @@ def Fii(Z: NDArray[np.int64], E: NDArray[np.float64]) -> NDArray[np.float64]:
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -964,11 +970,11 @@ def ComptonProfile_Partial(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     pz : NDArray[np.float64]
-        _description_
+        Momentum in atomic units
 
     Returns
     -------
@@ -997,11 +1003,11 @@ def CS_FluorLine_Kissel(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1030,11 +1036,11 @@ def CSb_FluorLine_Kissel(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1063,11 +1069,11 @@ def CS_FluorLine_Kissel_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1096,11 +1102,11 @@ def CSb_FluorLine_Kissel_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1129,11 +1135,11 @@ def CS_FluorLine_Kissel_no_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1162,11 +1168,11 @@ def CSb_FluorLine_Kissel_no_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1197,11 +1203,11 @@ def CS_FluorLine_Kissel_Nonradiative_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1234,11 +1240,11 @@ def CSb_FluorLine_Kissel_Nonradiative_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1269,11 +1275,11 @@ def CS_FluorLine_Kissel_Radiative_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1304,11 +1310,11 @@ def CSb_FluorLine_Kissel_Radiative_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1339,11 +1345,11 @@ def CS_FluorShell_Kissel(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1372,11 +1378,11 @@ def CSb_FluorShell_Kissel(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1405,11 +1411,11 @@ def CS_FluorShell_Kissel_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1438,11 +1444,11 @@ def CSb_FluorShell_Kissel_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1471,11 +1477,11 @@ def CS_FluorShell_Kissel_no_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1504,11 +1510,11 @@ def CSb_FluorShell_Kissel_no_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1539,11 +1545,11 @@ def CS_FluorShell_Kissel_Nonradiative_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1576,11 +1582,11 @@ def CSb_FluorShell_Kissel_Nonradiative_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1611,11 +1617,11 @@ def CS_FluorShell_Kissel_Radiative_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1646,11 +1652,11 @@ def CSb_FluorShell_Kissel_Radiative_Cascade(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1681,11 +1687,11 @@ def CS_FluorLine(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1712,11 +1718,11 @@ def CSb_FluorLine(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     line : NDArray[np.int64]
-        _description_
+        Line macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1745,11 +1751,11 @@ def CS_FluorShell(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1778,11 +1784,11 @@ def CSb_FluorShell(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1811,11 +1817,11 @@ def CS_Photo_Partial(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1844,11 +1850,11 @@ def CSb_Photo_Partial(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     shell : NDArray[np.int64]
-        _description_
+        Shell macro
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1877,11 +1883,11 @@ def DCS_Compt(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -1908,11 +1914,11 @@ def DCS_Rayl(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -1939,11 +1945,11 @@ def DCSb_Compt(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -1970,11 +1976,11 @@ def DCSb_Rayl(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -2004,13 +2010,13 @@ def DCSP_Compt(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
     phi : NDArray[np.float64]
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -2044,13 +2050,13 @@ def DCSP_Rayl(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
     phi : NDArray[np.float64]
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -2084,13 +2090,13 @@ def DCSPb_Compt(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
     phi : NDArray[np.float64]
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -2124,13 +2130,13 @@ def DCSPb_Rayl(
     Parameters
     ----------
     Z : NDArray[np.int64]
-        _description_
+        Atomic number
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
     phi : NDArray[np.float64]
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -2163,11 +2169,11 @@ def DCSP_KN(
     Parameters
     ----------
     E : NDArray[np.float64]
-        _description_
+        Energy in keV
     theta : NDArray[np.float64]
-        _description_
+        Scattering polar angle in radians
     phi : NDArray[np.float64]
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -2188,7 +2194,7 @@ def DCSP_KN(
 # TODO add tests for these functions
 
 
-# ??? should I implement these functions even though they aren't in the 
+# ??? should I implement these functions even though they aren't in the
 # original
 #     /* 1 string, 1 double */
 #     _XRL_FUNCTION(CS_Total_CP)

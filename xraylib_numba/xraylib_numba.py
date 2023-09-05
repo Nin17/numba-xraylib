@@ -1,4 +1,5 @@
-"""_summary_
+"""
+A numba compatible version of xraylib.
 """
 
 # pylint: disable=invalid-name, too-many-arguments, not-an-iterable
@@ -40,22 +41,23 @@ _AtomicWeight.restype = ct.c_double
 
 @nb.njit(**config["xrl"].get("AtomicWeight", {}))
 def AtomicWeight(Z: int) -> float:
-    """_summary_
+    """
+    Atomic weight of an element Z in g/mol.
 
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
 
     Returns
     -------
     float
-        _description_
+        Atomic weight in g/mol
 
     Raises
     ------
     ValueError
-        _description_
+        If Z is not a valid atomic number (1 <= Z <= 103)
     """
     result = _AtomicWeight(Z, 0)
     if result:
@@ -70,22 +72,23 @@ _ElementDensity.restype = ct.c_double
 
 @nb.njit(**config["xrl"].get("ElementDensity", {}))
 def ElementDensity(Z: int) -> float:
-    """_summary_
+    """
+    Density of an element Z at room temperature and pressure in g/cm³.
 
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
 
     Returns
     -------
     float
-        _description_
+        Density in g/cm³
 
     Raises
     ------
     ValueError
-        _description_
+        If Z is not a valid atomic number (1 <= Z <= 98)
     """
     result = _ElementDensity(Z, 0)
     if result:
@@ -103,22 +106,23 @@ _CS_KN.restype = ct.c_double
 
 @nb.njit(**config["xrl"].get("CS_KN", {}))
 def CS_KN(E: float) -> float:
-    """_summary_
+    """
+    Total Klein-Nishina cross section in barn.
 
     Parameters
     ----------
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
     float
-        _description_
+        Total Klein-Nishina cross section in barn
 
     Raises
     ------
     ValueError
-        _description_
+        If E is not a valid energy (E > 0)
     """
     result = _CS_KN(E, 0)
     if result:
@@ -138,7 +142,7 @@ def DCS_Thoms(theta: float) -> float:
     Parameters
     ----------
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -171,9 +175,9 @@ def AtomicLevelWidth(Z: int, shell: int) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
 
     Returns
     -------
@@ -203,9 +207,10 @@ def AugerRate(Z: int, auger_trans: int) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     auger_trans : int
-        _description_
+        Macro identifying initial ionized shell and two resulting ejected
+        elctrons
 
     Returns
     -------
@@ -235,9 +240,9 @@ def AugerYield(Z: int, shell: int) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
 
     Returns
     -------
@@ -267,9 +272,9 @@ def CosKronTransProb(Z: int, trans: int) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     trans : int
-        _description_
+        Transition type macro
 
     Returns
     -------
@@ -299,9 +304,9 @@ def EdgeEnergy(Z: int, shell: int) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
 
     Returns
     -------
@@ -331,9 +336,9 @@ def ElectronConfig(Z: int, shell: int) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
 
     Returns
     -------
@@ -363,9 +368,9 @@ def FluorYield(Z: int, shell: int) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
 
     Returns
     -------
@@ -395,9 +400,9 @@ def JumpFactor(Z: int, shell: int) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
 
     Returns
     -------
@@ -427,9 +432,9 @@ def LineEnergy(Z: int, line: int) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
 
     Returns
     -------
@@ -459,9 +464,9 @@ def RadRate(Z: int, line: int) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
 
     Returns
     -------
@@ -494,9 +499,9 @@ def ComptonEnergy(E0: float, theta: float) -> float:
     Parameters
     ----------
     E0 : float
-        _description_
+        Photon energy before scattering in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -526,9 +531,9 @@ def DCS_KN(E: float, theta: float) -> float:
     Parameters
     ----------
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -558,9 +563,9 @@ def DCSP_Thoms(theta: float, phi: float) -> float:
     Parameters
     ----------
     theta : float
-        _description_
+        Scattering polar angle in radians
     phi : float
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -590,9 +595,9 @@ def MomentTransf(E: float, theta: float) -> float:
     Parameters
     ----------
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -626,9 +631,9 @@ def ComptonProfile(Z: int, pz: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    pz : float
-        _description_
+        Atomic number
+    pz: float
+        Momentum in atomic units
 
     Returns
     -------
@@ -658,9 +663,9 @@ def CS_Compt(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -690,9 +695,9 @@ def CS_Energy(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -722,9 +727,9 @@ def CS_Photo(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -754,9 +759,9 @@ def CS_Photo_Total(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -786,9 +791,9 @@ def CS_Rayl(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -818,9 +823,9 @@ def CS_Total(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -850,9 +855,9 @@ def CS_Total_Kissel(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -882,9 +887,9 @@ def CSb_Compt(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -914,9 +919,9 @@ def CSb_Photo(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -946,9 +951,9 @@ def CSb_Photo_Total(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -978,9 +983,9 @@ def CSb_Rayl(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1010,9 +1015,9 @@ def CSb_Total(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1042,9 +1047,9 @@ def CSb_Total_Kissel(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1074,9 +1079,9 @@ def FF_Rayl(Z: int, q: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     q : float
-        _description_
+        Momentum transfer in Å⁻¹
 
     Returns
     -------
@@ -1106,9 +1111,9 @@ def SF_Compt(Z: int, q: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     q : float
-        _description_
+        Momentum transfer in Å⁻¹
 
     Returns
     -------
@@ -1138,9 +1143,9 @@ def Fi(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1170,9 +1175,9 @@ def Fii(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1202,9 +1207,9 @@ def PL1_pure_kissel(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1229,9 +1234,9 @@ def PM1_pure_kissel(Z: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1260,11 +1265,11 @@ def ComptonProfile_Partial(Z: int, shell: int, pz: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
-    pz : float
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
+    pz: float
+         Momentum in atomic units
 
     Returns
     -------
@@ -1294,11 +1299,11 @@ def CS_FluorLine_Kissel(Z: int, line: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1328,11 +1333,11 @@ def CSb_FluorLine_Kissel(Z: int, line: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1362,11 +1367,11 @@ def CS_FluorLine_Kissel_Cascade(Z: int, line: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1396,11 +1401,11 @@ def CSb_FluorLine_Kissel_Cascade(Z: int, line: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1430,11 +1435,11 @@ def CS_FluorLine_Kissel_no_Cascade(Z: int, line: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1464,11 +1469,11 @@ def CSb_FluorLine_Kissel_no_Cascade(Z: int, line: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1502,11 +1507,11 @@ def CS_FluorLine_Kissel_Nonradiative_Cascade(
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1540,11 +1545,11 @@ def CSb_FluorLine_Kissel_Nonradiative_Cascade(
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1578,11 +1583,11 @@ def CS_FluorLine_Kissel_Radiative_Cascade(
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1616,11 +1621,11 @@ def CSb_FluorLine_Kissel_Radiative_Cascade(
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1650,11 +1655,11 @@ def CS_FluorShell_Kissel(Z: int, shell: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1684,11 +1689,11 @@ def CSb_FluorShell_Kissel(Z: int, shell: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1718,11 +1723,11 @@ def CS_FluorShell_Kissel_Cascade(Z: int, shell: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1752,11 +1757,11 @@ def CSb_FluorShell_Kissel_Cascade(Z: int, shell: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1786,11 +1791,11 @@ def CS_FluorShell_Kissel_no_Cascade(Z: int, shell: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1820,11 +1825,11 @@ def CSb_FluorShell_Kissel_no_Cascade(Z: int, shell: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1858,11 +1863,11 @@ def CS_FluorShell_Kissel_Nonradiative_Cascade(
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1896,11 +1901,11 @@ def CSb_FluorShell_Kissel_Nonradiative_Cascade(
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1934,11 +1939,11 @@ def CS_FluorShell_Kissel_Radiative_Cascade(
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -1972,11 +1977,11 @@ def CSb_FluorShell_Kissel_Radiative_Cascade(
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -2006,11 +2011,11 @@ def CS_FluorLine(Z: int, line: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -2040,11 +2045,11 @@ def CSb_FluorLine(Z: int, line: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    line : int
-        _description_
+        Atomic number
+    line: int
+        Line macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -2074,11 +2079,11 @@ def CS_FluorShell(Z: int, shell: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -2108,11 +2113,11 @@ def CSb_FluorShell(Z: int, shell: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -2142,11 +2147,11 @@ def CS_Photo_Partial(Z: int, shell: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -2176,11 +2181,11 @@ def CSb_Photo_Partial(Z: int, shell: int, E: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
-    shell : int
-        _description_
+        Atomic number
+    shell: int
+        Shell-type macro
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -2214,11 +2219,11 @@ def DCS_Compt(Z: int, E: float, theta: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -2248,11 +2253,11 @@ def DCS_Rayl(Z: int, E: float, theta: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -2282,11 +2287,11 @@ def DCSb_Compt(Z: int, E: float, theta: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -2316,11 +2321,11 @@ def DCSb_Rayl(Z: int, E: float, theta: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -2350,11 +2355,11 @@ def PL1_auger_cascade_kissel(Z: int, E: float, PK: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2379,11 +2384,11 @@ def PL1_full_cascade_kissel(Z: int, E: float, PK: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2408,11 +2413,11 @@ def PL1_rad_cascade_kissel(Z: int, E: float, PK: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2437,11 +2442,11 @@ def PL2_pure_kissel(Z: int, E: float, PL1: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PL1 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2466,11 +2471,11 @@ def PM2_pure_kissel(Z: int, E: float, PM1: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PM1 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2505,13 +2510,13 @@ def DCSP_Rayl(Z: int, E: float, theta: float, phi: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
     phi : float
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -2541,13 +2546,13 @@ def DCSP_Compt(Z: int, E: float, theta: float, phi: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
     phi : float
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -2577,13 +2582,13 @@ def DCSPb_Rayl(Z: int, E: float, theta: float, phi: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
     phi : float
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -2613,13 +2618,13 @@ def DCSPb_Compt(Z: int, E: float, theta: float, phi: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
     phi : float
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -2649,13 +2654,13 @@ def PL2_auger_cascade_kissel(Z: int, E: float, PK: float, PL1: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2680,13 +2685,13 @@ def PL2_full_cascade_kissel(Z: int, E: float, PK: float, PL1: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2711,13 +2716,13 @@ def PL2_rad_cascade_kissel(Z: int, E: float, PK: float, PL1: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2742,13 +2747,13 @@ def PL3_pure_kissel(Z: int, E: float, PL1: float, PL2: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2773,13 +2778,13 @@ def PM3_pure_kissel(Z: int, E: float, PM1: float, PM2: float) -> float:
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2817,15 +2822,15 @@ def PL3_auger_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2852,15 +2857,15 @@ def PL3_full_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2887,15 +2892,15 @@ def PL3_rad_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2922,15 +2927,15 @@ def PM4_pure_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
+        _description_ # ???
     PM3 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -2970,17 +2975,17 @@ def PM1_auger_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3007,17 +3012,17 @@ def PM1_full_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3044,17 +3049,17 @@ def PM1_rad_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3081,17 +3086,17 @@ def PM5_pure_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
+        _description_ # ???
     PM3 : float
-        _description_
+        _description_ # ???
     PM4 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3131,19 +3136,19 @@ def PM2_auger_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3170,19 +3175,19 @@ def PM2_full_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3209,19 +3214,19 @@ def PM2_rad_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3270,21 +3275,21 @@ def PM3_auger_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3318,21 +3323,21 @@ def PM3_full_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3366,21 +3371,21 @@ def PM3_rad_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3430,23 +3435,23 @@ def PM4_auger_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
+        _description_ # ???
     PM3 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3483,23 +3488,23 @@ def PM4_full_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
+        _description_ # ???
     PM3 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3536,24 +3541,23 @@ def PM4_rad_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
-
+        _description_ # ???
     PM3 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3606,27 +3610,25 @@ def PM5_auger_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
-
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
-
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
+        _description_ # ???
     PM3 : float
-        _description_
+        _description_ # ???
     PM4 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3666,27 +3668,25 @@ def PM5_full_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
-
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
-
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
+        _description_ # ???
     PM3 : float
-        _description_
+        _description_ # ???
     PM4 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3726,27 +3726,25 @@ def PM5_rad_cascade_kissel(
     Parameters
     ----------
     Z : int
-        _description_
+        Atomic number
     E : float
-        _description_
-
+        Energy in keV
     PK : float
-        _description_
+        _description_ # ???
     PL1 : float
-        _description_
+        _description_ # ???
     PL2 : float
-        _description_
-
+        _description_ # ???
     PL3 : float
-        _description_
+        _description_ # ???
     PM1 : float
-        _description_
+        _description_ # ???
     PM2 : float
-        _description_
+        _description_ # ???
     PM3 : float
-        _description_
+        _description_ # ???
     PM4 : float
-        _description_
+        _description_ # ???
 
     Returns
     -------
@@ -3779,11 +3777,11 @@ def DCSP_KN(E: float, theta: float, phi: float) -> float:
     Parameters
     ----------
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
     phi : float
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -3828,9 +3826,9 @@ def CS_Total_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -3851,9 +3849,9 @@ def CS_Photo_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -3874,9 +3872,9 @@ def CS_Rayl_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -3897,9 +3895,9 @@ def CS_Compt_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -3920,9 +3918,9 @@ def CS_Energy_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -3943,9 +3941,9 @@ def CS_Photo_Total_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -3966,9 +3964,9 @@ def CS_Total_Kissel_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -3989,9 +3987,9 @@ def CSb_Total_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -4012,9 +4010,9 @@ def CSb_Photo_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -4035,9 +4033,9 @@ def CSb_Rayl_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -4058,9 +4056,9 @@ def CSb_Compt_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -4081,9 +4079,9 @@ def CSb_Photo_Total_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -4104,9 +4102,9 @@ def CSb_Total_Kissel_CP(compound: str, E: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
 
     Returns
     -------
@@ -4130,11 +4128,11 @@ def DCS_Rayl_CP(compound: str, E: float, theta: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -4155,11 +4153,11 @@ def DCS_Compt_CP(compound: str, E: float, theta: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -4180,11 +4178,11 @@ def DCSb_Rayl_CP(compound: str, E: float, theta: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -4205,11 +4203,11 @@ def DCSb_Compt_CP(compound: str, E: float, theta: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
 
     Returns
     -------
@@ -4230,11 +4228,11 @@ def Refractive_Index_Im(compound: str, E: float, density: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
     density : float
-        _description_
+        Density at room temperature in g/cm³
 
     Returns
     -------
@@ -4272,11 +4270,11 @@ def Refractive_Index_Re(compound: str, E: float, density: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
     density : float
-        _description_
+        Density at room temperature in g/cm³
 
     Returns
     -------
@@ -4314,6 +4312,35 @@ def Refractive_Index_Re(compound: str, E: float, density: float) -> float:
 
 @nb.njit(**config["xrl"].get("Refractive_Index", {}))
 def Refractive_Index(compound: str, E: float, density: float) -> float:
+    """_summary_
+
+    Parameters
+    ----------
+    compound : str
+        Chemical formula or NIST compound
+    E : float
+        Energy in keV
+    density : float
+        Density at room temperature in g/cm³
+
+    Returns
+    -------
+    float
+        _description_
+
+    Raises
+    ------
+    ValueError
+        _description_
+    ValueError
+        _description_
+    ValueError
+        _description_
+    ValueError
+        _description_
+    ValueError
+        _description_
+    """
     KD = 4.15179082788e-4
     e, m, n = _parser(compound)
     if E <= 0:
@@ -4353,13 +4380,13 @@ def DCSP_Rayl_CP(compound: str, E: float, theta: float, phi: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
     phi : float
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -4380,13 +4407,13 @@ def DCSP_Compt_CP(compound: str, E: float, theta: float, phi: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
     phi : float
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -4407,13 +4434,13 @@ def DCSPb_Rayl_CP(compound: str, E: float, theta: float, phi: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
     phi : float
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
@@ -4434,13 +4461,13 @@ def DCSPb_Compt_CP(compound: str, E: float, theta: float, phi: float) -> float:
     Parameters
     ----------
     compound : str
-        _description_
+        Chemical formula or NIST compound
     E : float
-        _description_
+        Energy in keV
     theta : float
-        _description_
+        Scattering polar angle in radians
     phi : float
-        _description_
+        Scattering azimuthal angle in radians
 
     Returns
     -------
