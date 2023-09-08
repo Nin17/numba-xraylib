@@ -4,6 +4,6 @@ A [numba](https://numba.pydata.org) wrapper of the [xraylib](https://github.com/
 
 ## Installation
 
-```
+```bash
 conda install -c nin17 xraylib_numba
 ```
