@@ -2,3 +2,10 @@
 **.pytest_cache
 **xraylib_numba.egg-info
 **build
+*.log
+*.c
+*.f90
+*.so
+.conda
+.vscode
+.DS_Store
