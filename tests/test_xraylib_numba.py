@@ -1,14 +1,13 @@
 """_summary_
 """
 
-# pylint: disable=missing-class-docstring, unused-import
+import pytest
 
-from .utilitites import (
-    XraylibTest,
-    XraylibNpTest,
-    test_function_coverage_xrl,
-    test_function_coverage_xrlnp,
-)
+import xraylib
+
+from .utilitites import XraylibNpTest, XraylibTest
+
+# pylint: disable=missing-class-docstring, unused-import
 
 
 class TestAtomicWeight(XraylibTest, XraylibNpTest):
@@ -195,9 +194,7 @@ class TestCS_FluorLine_Kissel_Nonradiative_Cascade(XraylibTest, XraylibNpTest):
     ...
 
 
-class TestCSb_FluorLine_Kissel_Nonradiative_Cascade(
-    XraylibTest, XraylibNpTest
-):
+class TestCSb_FluorLine_Kissel_Nonradiative_Cascade(XraylibTest, XraylibNpTest):
     ...
 
 
@@ -233,15 +230,11 @@ class TestCSb_FluorShell_Kissel_no_Cascade(XraylibTest, XraylibNpTest):
     ...
 
 
-class TestCS_FluorShell_Kissel_Nonradiative_Cascade(
-    XraylibTest, XraylibNpTest
-):
+class TestCS_FluorShell_Kissel_Nonradiative_Cascade(XraylibTest, XraylibNpTest):
     ...
 
 
-class TestCSb_FluorShell_Kissel_Nonradiative_Cascade(
-    XraylibTest, XraylibNpTest
-):
+class TestCSb_FluorShell_Kissel_Nonradiative_Cascade(XraylibTest, XraylibNpTest):
     ...
 
 
@@ -394,7 +387,7 @@ class TestPM2_rad_cascade_kissel(XraylibTest):
 
 
 class TestPM3_auger_cascade_kissel(XraylibTest):
-    ...
+        ...
 
 
 class TestPM3_full_cascade_kissel(XraylibTest):
@@ -433,4 +426,4 @@ class TestDCSP_KN(XraylibTest, XraylibNpTest):
     ...
 
 
-# TODO: tests for functions with string arguments
+# TODO: tests for functions with string arguments when implemented

@@ -1,16 +1,12 @@
 """_summary_
 """
 
-import os
-import sys
+check_result = True
+"""
+Whether to check if the result of a function is 0.0 and raise a warning if it is.
+"""
 
-if sys.version_info < (3, 11):
-    import tomli as tomllib
-else:
-    import tomllib
+allow_Nd = False
+# Whether to allow N-dimensional arrays as input to xraylib_np functions.
 
-PATH = os.path.dirname(__file__)
-CONFIG_PATH = os.path.join(PATH, "config.toml")
-
-with open(CONFIG_PATH, "rb") as f:
-    config = tomllib.load(f)
+# TODO load jit options from config file
