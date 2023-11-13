@@ -15,7 +15,7 @@ from numpy.testing import assert_allclose
 
 import xraylib
 import xraylib_numba
-from xraylib_numba import XraylibNumbaWarning, config
+from xraylib_numba import config
 
 config.CHECK_RESULT = True
 
@@ -199,22 +199,19 @@ class XraylibTest(BaseTest):
             xrl_result = self.xrl_func(*self.args)
         except ValueError:
             xrl_result = 0.0
-            warnings.filterwarnings("error", category=XraylibNumbaWarning)
-            with pytest.raises(Exception): # TODO: change to ValueError
+            with pytest.raises(ValueError):
                 self.xrl_numba_func(*self.args)
-
+        # TODO some more stuff
         # warnings.filterwarnings("ignore", category=XraylibNumbaWarning)
         # assert self.xrl_numba_func(*self.args) == xrl_result
 
     def test_bare_compile(self):
-        warnings.filterwarnings("ignore", category=XraylibNumbaWarning)
         _func = getattr(xraylib, self.func)
         try:
             self.xrl_func(*self.args)
         except ValueError:
             # TODO remove this
-            warnings.filterwarnings("error", category=XraylibNumbaWarning)
-            with pytest.raises(Exception):
+            with pytest.raises(ValueError):
                 nb.njit(_func)(*self.args)
         else:
             nb.njit(_func)(*self.args)
