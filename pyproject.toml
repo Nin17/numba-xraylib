@@ -1,34 +1,37 @@
-# tells pip what build tool to use to build your package
 [build-system]
-build-backend = "setuptools.build_meta"
-requires = ["setuptools>=61.0"]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
 
-# tells pip how to build your pypi webpage & what dependencies to install
 [project]
-authors = [
-  {name = "Chris Ninham", email = "christopher.ninham@creatis.insa-lyon.fr"},
-]
-dependencies = ["numba", 'tomli; python_version < "3.11"']
+authors = [{name = "Chris Ninham", email = "christopher.ninham@creatis.insa-lyon.fr"},]
+dependencies = ['numba>=0.57', 'tomli; python_version < "3.11"']
 description = "A numba compatible wrapper of the xraylib library."
-dynamic = ["readme"]
+# dynamic = ["version"]
 name = "xraylib_numba"
-version = "0.1"
+version = "0.1.0"
 requires-python = ">=3.8"
 
 [project.optional-dependencies]
-xraylib_numba = ["numpy"]
-tests = ["pytest"]
+dev = ["ruff", "pytest"]
 
-[tool.setuptools.dynamic]
-readme = {file = ["README.md"]}
+[project.entry-points.numba_extensions]
+init = "xraylib_numba:_init"
 
-[tool.setuptools.package-data]
-xraylib_numba = ["xraylib_numba/config.toml"]
+[tool.flit.external-data]
+directory = "xraylib_numba"
 
-# (OPTIONAL) tells pypi that these urls are where your project's source code and issue tracker reside
-# [project.urls]
-# "Homepage" = "https://github.com/pypa/packaging.python.org"
-# "Bug Tracker" = "https://github.com/pypa/packaging.python.org/issues"
+# [tool.setuptools.package-data]
+# xraylib_numba = ["xraylib_numba/config.toml"]
 
-[tool.setuptools]
-py-modules = ["xraylib_numba"]
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ['ALL']
+ignore = ['N802', 'N803', 'N806', 'PLR0913', 'TD003']
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib",]
+
+[tool.pyright]
+reportInvalidTypeForm = false
