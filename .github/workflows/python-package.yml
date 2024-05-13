@@ -28,7 +28,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip install pytest .
-        conda install -c conda-forge xraylib
+        conda install -c conda-forge xraylib -y
     - name: Lint with Ruff
       run: |
         pip install ruff
