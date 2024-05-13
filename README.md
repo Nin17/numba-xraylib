@@ -8,19 +8,20 @@ Use [xraylib](https://github.com/tschoonj/xraylib/tree/master) in [numba](https:
 ## Installation
 
 ```text
-conda install -c nin17 xraylib_numba
+pip install xraylib_numba
 ```
 
 ## Usage
 
-Simply import `xraylib_numba` to use `xraylib` and `xraylib_np` in nopython mode:
+Simply install `xraylib_numba` in your environment to use `xraylib` and `xraylib_np` in nopython mode:
 
 ```python
 import xraylib
 import xraylib_np
-import xraylib_numba
 from numba import njit
 import numpy as np
+
+# %pip install xraylib_numba
 
 @njit
 def AtomicWeight(Z):
@@ -29,4 +30,5 @@ def AtomicWeight(Z):
 print(AtomicWeight(1))  # (1.01, array([1.01]))
 ```
 
-Currently, functions that have non-numeric arguments or returns are unsupported. If you know how to pass strings from numba to c please let me know.
+Currently, functions that have non-numeric arguments or returns are unsupported.
+If you know how to pass strings from numba to c please let me know.
