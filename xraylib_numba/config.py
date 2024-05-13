@@ -1,4 +1,4 @@
-"""_summary_"""
+"""Configure jit options for xraylib_numba."""
 
 from __future__ import annotations
 
@@ -17,11 +17,11 @@ with (Path(__file__).parent / "config.toml").open("rb") as f:
 
 
 class Config:
-    """_summary_"""
+    """Configuration for jit options."""
 
     __slots__ = ["xrl", "xrl_np", "allow_nd"]
 
-    def __init__(
+    def __init__(  # noqa: D107
         self: Config,
         **toml_config: dict[str, dict[str, Any]],
     ) -> None:
