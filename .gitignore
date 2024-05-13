@@ -10,3 +10,5 @@
 .vscode
 .DS_Store
 *.ipynb
+*.whl
+*.tar.gz
