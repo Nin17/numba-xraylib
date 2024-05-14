@@ -20,7 +20,7 @@ jobs:
         echo $CONDA/bin >> $GITHUB_PATH
     - name: Install dependencies
       run: |
-        conda install pytest ruff xraylib
+        conda install -c conda-forge pytest ruff xraylib
         python -m pip install --upgrade pip
         python -m pip install .
     - name: Lint with Ruff
