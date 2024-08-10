@@ -5,17 +5,15 @@ from __future__ import annotations
 import functools
 import inspect
 import random
-from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 import numba as nb
 import pytest
+import xraylib
 import xraylib_np
 from numpy import asarray, broadcast_to, float64, int_, pi
 from numpy.random import default_rng
 from numpy.testing import assert_equal
-
-import xraylib
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -23,7 +21,6 @@ if TYPE_CHECKING:
 # ruff: noqa: D101, N801, S311
 
 
-rng = default_rng()
 N = 10
 
 
@@ -87,29 +84,38 @@ class BaseTest:
 class XraylibTest(BaseTest):
     """Base class for testing xraylib functions."""
 
-    args_dict = MappingProxyType(
-        {
-            "Z": (random.randint, (0, 119)),
-            "E": (lambda: random.random() * 1000, ()),
-            "theta": (lambda: (random.random() - 0.5) * 2 * pi, ()),
-            "shell": (random.randint, (1, 30)),  # TODO(nin17): sensible values
-            "auger_trans": (random.randint, (1, 30)),  # TODO(nin17): sensible values
-            "trans": (random.randint, (1, 30)),  # TODO(nin17): sensible values
-            "line": (random.randint, (1, 30)),  # TODO(nin17): sensible values
-            "E0": (lambda: random.random() * 1000, ()),  # TODO(nin17): sensible values
-            "phi": (lambda: (random.random() - 0.5) * 2 * pi, ()),
-            "pz": (random.random, ()),  # TODO(nin17): sensible values
-            "q": (random.random, ()),  # TODO(nin17): sensible values
-            "PK": (random.random, ()),  # TODO(nin17): sensible values
-            "PL1": (random.random, ()),  # TODO(nin17): sensible values
-            "PL2": (random.random, ()),  # TODO(nin17): sensible values
-            "PL3": (random.random, ()),  # TODO(nin17): sensible values
-            "PM1": (random.random, ()),  # TODO(nin17): sensible values
-            "PM2": (random.random, ()),  # TODO(nin17): sensible values
-            "PM3": (random.random, ()),  # TODO(nin17): sensible values
-            "PM4": (random.random, ()),  # TODO(nin17): sensible values
-        },
-    )
+    @staticmethod
+    def _args(arg: str) -> int | float:
+        i_args = {
+            "Z": (0, 119),
+            "shell": (1, 30),
+            "auger_trans": (1, 30),
+            "trans": (1, 30),
+            "line": (1, 30),
+        }
+        f_args = {
+            "E": (0.0, 1000.0),
+            "theta": (0.5, 2 * pi),
+            "E0": (0.0, 1000.0),
+            "phi": (0.5, 2 * pi),
+            "pz": (0.0, 1.0),
+            "q": (0.0, 1.0),
+            "PK": (0.0, 1.0),
+            "PL1": (0.0, 1.0),
+            "PL2": (0.0, 1.0),
+            "PL3": (0.0, 1.0),
+            "PM1": (0.0, 1.0),
+            "PM2": (0.0, 1.0),
+            "PM3": (0.0, 1.0),
+            "PM4": (0.0, 1.0),
+        }
+        if arg in i_args:
+            return random.randint(*i_args[arg])
+        if arg in f_args:
+            return (random.random() - f_args[arg][0]) * f_args[arg][1]
+
+        msg = f"Invalid argument: {arg}"
+        raise ValueError(msg)
 
     @functools.cached_property
     def args(self: XraylibTest) -> tuple[int | float, ...]:
@@ -121,12 +127,7 @@ class XraylibTest(BaseTest):
             The arguments for the xraylib function.
 
         """
-        return tuple(
-            [
-                self.args_dict[arg][0](*self.args_dict[arg][1])
-                for arg in self.xrl_sig.parameters
-            ],
-        )
+        return tuple([self._args(arg) for arg in self.xrl_sig.parameters])
 
     def test_xrl(self: XraylibTest) -> None:
         """Test njit function against xraylib return and possible error."""
@@ -154,36 +155,31 @@ class XraylibTest(BaseTest):
 class XraylibNpTest(BaseTest):
     """Base class for testing xraylib_np functions."""
 
-    args_np_dict = MappingProxyType(
-        {
-            "Z": (lambda *args: rng.integers(*args).astype(int_), (0, 119, N)),
-            "E": (lambda: rng.random(N + 1) * 1000, ()),
-            "theta": (lambda: (rng.random(N + 2) - 0.5) * 2 * pi, ()),
-            "shell": (
-                lambda *args: rng.integers(*args).astype(int_),
-                (1, 30, N + 3),
-            ),  # TODO(nin17): sensible values
-            "auger_trans": (
-                lambda *args: rng.integers(*args).astype(int_),
-                (1, 30, N + 4),
-            ),  # TODO(nin17): sensible values
-            "trans": (
-                lambda *args: rng.integers(*args).astype(int_),
-                (1, 30, N + 5),
-            ),  # TODO(nin17): sensible values
-            "line": (
-                lambda *args: rng.integers(*args).astype(int_),
-                (1, 30, N + 6),
-            ),  # TODO(nin17): sensible values
-            "E0": (
-                lambda: rng.random(N + 7) * 1000,
-                (),
-            ),  # TODO(nin17): sensible values
-            "phi": (lambda: (rng.random(N + 8) - 0.5) * 2 * pi, ()),
-            "pz": (lambda: rng.random(N + 9), ()),  # TODO(nin17): sensible values
-            "q": (lambda: rng.random(N + 10), ()),  # TODO(nin17): sensible values
-        },
-    )
+    @staticmethod
+    def _args_np(arg: str) -> NDArray[int_] | NDArray[float64]:
+        rng = default_rng(seed=random.randint(0, 2**32 - 1))
+        i_args = {
+            "Z": (0, 119, N),
+            "shell": (1, 30, N + 3),
+            "auger_trans": (1, 30, N + 4),
+            "trans": (1, 30, N + 5),
+            "line": (1, 30, N + 6),
+        }
+        f_args = {
+            "E": (N + 1, 0.0, 1000.0),
+            "theta": (N + 2, 0.5, 2 * pi),
+            "E0": (N + 7, 0.0, 1000.0),
+            "phi": (N + 8, 0.5, 2 * pi),
+            "pz": (N + 9, 0.0, 1.0),
+            "q": (N + 10, 0.0, 1.0),
+        }
+        if arg in i_args:
+            return rng.integers(*i_args[arg]).astype(int_)
+        if arg in f_args:
+            return (rng.random(f_args[arg][0]) - f_args[arg][1]) * f_args[arg][2]
+
+        msg = f"Invalid argument: {arg}"
+        raise ValueError(msg)
 
     @functools.cached_property
     def args_np(
@@ -197,10 +193,7 @@ class XraylibNpTest(BaseTest):
             The arguments for the xraylib_np function.
 
         """
-        return tuple(
-            self.args_np_dict[arg][0](*self.args_np_dict[arg][1])
-            for arg in self.xrl_sig.parameters
-        )
+        return tuple(self._args_np(arg) for arg in self.xrl_sig.parameters)
 
     @functools.cached_property
     def xrl_np_func(self: XraylibNpTest) -> callable:
@@ -255,13 +248,13 @@ class XraylibNpTest(BaseTest):
         _func = getattr(xraylib_np, self.func)
         nb.njit(_func)(*self.args_np)
 
-    # @pytest.mark.skipif(not config.allow_Nd, reason="N-dimensional arrays not allowed")
     def test_nd(self: XraylibNpTest) -> None:
         """Test with N-dimensional arrays."""
         from xraylib_numba import config
 
+        rng = default_rng(seed=random.randint(0, 2**32 - 1))
+
         config.allow_nd = True
-        # TODO(nin17): set allow_nd to True
         _func_np = getattr(xraylib_np, self.func)
 
         xrl_result = _func_np(*[i[:1] for i in self.args_np])
