@@ -10,13 +10,12 @@ from itertools import chain, repeat
 from typing import TYPE_CHECKING
 
 import _xraylib
+import xraylib
 import xraylib_np
 from llvmlite import binding
 from numba import errors, types, vectorize
 from numba.extending import overload
 from numpy import array, broadcast_to, int32
-
-import xraylib
 
 from .config import config
 
