@@ -6,13 +6,13 @@ build-backend = "flit_core.buildapi"
 authors = [{name = "Chris Ninham", email = "christopher.ninham@creatis.insa-lyon.fr"},]
 dependencies = ['numba>=0.57', 'numpy<2.0', 'tomli; python_version < "3.11"']
 description = "A numba compatible wrapper of the xraylib library."
-# dynamic = ["version"]
+
 name = "xraylib_numba"
 version = "0.1.0"
 requires-python = ">=3.8"
 
 [project.optional-dependencies]
-dev = ['ruff', 'pytest', 'pytest-randomly']
+dev = ['ruff', 'pytest', 'pytest-env', 'pytest-randomly']
 
 [project.entry-points.numba_extensions]
 init = "xraylib_numba:_init"
@@ -32,3 +32,6 @@ addopts = ["--import-mode=importlib",]
 
 [tool.pyright]
 reportInvalidTypeForm = false
+
+[tool.pytest_env]
+NUMBA_CAPTURED_ERRORS='new_style'
