@@ -1,8 +1,5 @@
 [xrl]
 
-
-
-
 [xrl_np]
 [xrl_np.AtomicLevelWidth]
 parallel = true

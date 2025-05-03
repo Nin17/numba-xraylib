@@ -3,11 +3,11 @@ requires = ["flit_core >=3.2,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-authors = [{name = "Chris Ninham", email = "christopher.ninham@creatis.insa-lyon.fr"},]
+authors = [{name = "Chris Ninham", email = "christopher.ninham@insa-lyon.fr"},]
 dependencies = ['numba>=0.57', 'numpy<2.0', 'tomli; python_version < "3.11"']
 description = "A numba compatible wrapper of the xraylib library."
 
-name = "xraylib_numba"
+name = "numba-xraylib"
 version = "0.1.0"
 requires-python = ">=3.8"
 
@@ -15,10 +15,10 @@ requires-python = ">=3.8"
 dev = ['ruff', 'pytest', 'pytest-env', 'pytest-randomly']
 
 [project.entry-points.numba_extensions]
-init = "xraylib_numba:_init"
+init = "numba_xraylib:_init"
 
 [tool.flit.external-data]
-directory = "xraylib_numba"
+directory = "numba_xraylib"
 
 [tool.ruff]
 line-length = 88
@@ -27,8 +27,12 @@ line-length = 88
 select = ['ALL']
 ignore = ['N802', 'N803', 'N806', 'PLR0913', 'TD003']
 
+[tool.ruff.extend-per-file-ignores]
+'xraylib_overloads' = ['ANN001', 'ANN202']
+
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib",]
+testpaths = "tests"
 
 [tool.pyright]
 reportInvalidTypeForm = false

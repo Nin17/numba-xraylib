@@ -1,26 +1,29 @@
 """Overloads for xraylib functions to work with numba."""
 # TODO(nin17): check variable names are the same as in the xraylib functions
 
+# ??? why is this necessary. should work in pyproject.toml
 # ruff: noqa: ANN001, ANN202
 
 from __future__ import annotations
 
+import inspect
 from ctypes.util import find_library
 from itertools import chain, repeat
 from typing import TYPE_CHECKING
 
 import _xraylib
-import xraylib
 import xraylib_np
 from llvmlite import binding
-from numba import errors, types, vectorize
-from numba.extending import overload
-from numpy import array, broadcast_to, int32
+from numba import errors, extending, types, vectorize
+from numpy import array, broadcast_to, byte, int32, zeros
 
 from .config import config
 
 if TYPE_CHECKING:
     import sys
+    from collections.abc import Sequence
+
+    from numpy.typing import Array
 
     if sys.version_info >= (3, 10):
         from types import EllipsisType
@@ -30,16 +33,25 @@ if TYPE_CHECKING:
 binding.load_library_permanently(find_library("xrl"))
 
 
-def _nint_ndouble(name: str, nint: int = 0, ndouble: int = 0) -> types.ExternalFunction:
-    """External function with nint integer args followed by ndouble double args.
+def _get_name():
+    return inspect.stack()[2].function.removeprefix("_").removesuffix("_np")
+
+
+def _external_func(
+    *,
+    nstr: int = 0,
+    ni32: int = 0,
+    nf64: int = 0,
+) -> types.ExternalFunction:
+    """External function with nstr string args, ni32 integer args & nf64 double args.
 
     Parameters
     ----------
-    name : str
-        the name of the external function
-    nint : int, optional
+    nstr : int, optional
+        the number of string args, by default 0
+    ni32 : int, optional
         the number of integer args, by default 0
-    ndouble : int, optional
+    nf64 : int, optional
         the number of double args, by default 0
 
     Returns
@@ -48,28 +60,51 @@ def _nint_ndouble(name: str, nint: int = 0, ndouble: int = 0) -> types.ExternalF
         the external function
 
     """
-    argtypes = [types.int64 for _ in range(nint)] + [
-        types.float64 for _ in range(ndouble)
-    ]
+    name = _get_name()
+    # TODO(nin17): make this look nicer
+    argtypes = (
+        [types.CPointer(types.char) for _ in range(nstr)]
+        + [types.int64 for _ in range(ni32)]
+        + [types.float64 for _ in range(nf64)]
+    )
     sig = types.float64(*argtypes, types.voidptr)
     return types.ExternalFunction(name, sig)
 
 
-def _check_types(args, nint: int = 0, ndouble: int = 0, *, _np: bool = False) -> None:
+def _check_type(arg, numba_type, msg, msgformat):
+    if not isinstance(arg, numba_type):
+        raise errors.NumbaTypeError(msg.format(msgformat, arg))
+
+
+def _check_types(
+    args: Sequence,
+    *,
+    nstr: int = 0,
+    ni32: int = 0,
+    nf64: int = 0,
+    _np: bool = False,
+) -> None:
     if _np:
+        if nstr:
+            msg = "No string arguments allowed in xrayslib_np"
+            raise errors.NumbaValueError(msg)
+
         msg = "Expected array({0}, ...) got {1}"
-        for i in range(nint):
+        for i in range(ni32):
             if not isinstance(args[i].dtype, types.Integer):
                 raise errors.NumbaTypeError(msg.format("int32|int64", args[i]))
-        for i in range(nint, nint + ndouble):
+        for i in range(ni32, ni32 + nf64):
             if args[i].dtype is not types.float64:
                 raise errors.NumbaTypeError(msg.format("float64", args[i]))
     else:
         msg = "Expected {0} got {1}"
-        for i in range(nint):
+        for i in range(nstr):
+            if not isinstance(args[i], types.UnicodeType):
+                raise errors.NumbaTypeError(msg.format(types.UnicodeType, args[i]))
+        for i in range(nstr, nstr + ni32):
             if not isinstance(args[i], types.Integer):
                 raise errors.NumbaTypeError(msg.format(types.Integer, args[i]))
-        for i in range(nint, nint + ndouble):
+        for i in range(nstr + ni32, nstr + ni32 + nf64):
             if args[i] is not types.float64:
                 raise errors.NumbaTypeError(msg.format(types.float64, args[i]))
 
@@ -88,6 +123,29 @@ def _indices(*args: types.Array) -> list[tuple[None | EllipsisType, ...]]:
         )
         for i, _ in enumerate(args)
     ]
+
+
+@extending.register_jitable
+def _convert_str(s: str) -> Array[byte]:
+    len_s = len(s)
+    out = zeros(len(s) + 1, dtype=byte)
+    for i in range(len_s):
+        out[i] = ord(s[i])
+    return out
+
+
+def _overload(func: callable) -> None:
+    fname = func.__name__.removeprefix("_")
+    jit_options = config.xrl.get(fname, {})
+    xrl_func = getattr(_xraylib, fname)
+    extending.overload(xrl_func, jit_options)(func)
+    extending.register_jitable(xrl_func)
+
+
+def _overload_np(func: callable) -> None:
+    fname = func.__name__.removeprefix("_").removesuffix("_np")
+    jit_options = config.xrl_np.get(fname, {})
+    extending.overload(getattr(xraylib_np, fname), jit_options)(func)
 
 
 # Error messages
@@ -112,12 +170,14 @@ UNAVALIABLE_PHOTO_CS = (
 
 ND_ERROR = "N-dimensional arrays (N > 1) are not allowed if config.allow_nd is False"
 
+
 # --------------------------------------- 1 int -------------------------------------- #
 
 
+@_overload
 def _AtomicWeight(Z):
-    _check_types((Z,), 1)
-    xrl_fcn = _nint_ndouble("AtomicWeight", 1)
+    _check_types((Z,), ni32=1)
+    xrl_fcn = _external_func(ni32=1)
 
     def impl(Z):
         error = array([0, 0], dtype=int32)
@@ -129,19 +189,11 @@ def _AtomicWeight(Z):
     return impl
 
 
-overload(xraylib.AtomicWeight, jit_options=config.xrl.get("AtomicWeight", {}))(
-    _AtomicWeight,
-)
-overload(_xraylib.AtomicWeight, jit_options=config.xrl.get("AtomicWeight", {}))(
-    _AtomicWeight,
-)
-
-
-@overload(xraylib_np.AtomicWeight, jit_options=config.xrl_np.get("AtomicWeight", {}))
+@_overload_np
 def _AtomicWeight_np(Z):
-    _check_types((Z,), 1, _np=True)
+    _check_types((Z,), ni32=1, _np=True)
     _check_ndim(Z)
-    xrl_fcn = _nint_ndouble("AtomicWeight", 1)
+    xrl_fcn = _external_func(ni32=1)
 
     @vectorize
     def _impl(Z):
@@ -150,9 +202,10 @@ def _AtomicWeight_np(Z):
     return lambda Z: _impl(Z)
 
 
+@_overload
 def _ElementDensity(Z):
-    _check_types((Z,), 1)
-    xrl_fcn = _nint_ndouble("ElementDensity", 1)
+    _check_types((Z,), ni32=1)
+    xrl_fcn = _external_func(ni32=1)
 
     def impl(Z):
         error = array([0, 0], dtype=int32)
@@ -164,22 +217,11 @@ def _ElementDensity(Z):
     return impl
 
 
-overload(xraylib.ElementDensity, jit_options=config.xrl.get("ElementDensity", {}))(
-    _ElementDensity,
-)
-overload(_xraylib.ElementDensity, jit_options=config.xrl.get("ElementDensity", {}))(
-    _ElementDensity,
-)
-
-
-@overload(
-    xraylib_np.ElementDensity,
-    jit_options=config.xrl_np.get("ElementDensity", {}),
-)
+@_overload_np
 def _ElementDensity_np(Z):
-    _check_types((Z,), 1, _np=True)
+    _check_types((Z,), ni32=1, _np=True)
     _check_ndim(Z)
-    xrl_fcn = _nint_ndouble("ElementDensity", 1)
+    xrl_fcn = _external_func(ni32=1)
 
     @vectorize
     def _impl(Z):
@@ -191,9 +233,10 @@ def _ElementDensity_np(Z):
 # ------------------------------------- 1 double ------------------------------------- #
 
 
+@_overload
 def _CS_KN(E):
-    _check_types((E,), 0, 1)
-    xrl_fcn = _nint_ndouble("CS_KN", 0, 1)
+    _check_types((E,), nf64=1)
+    xrl_fcn = _external_func(nf64=1)
 
     def impl(E):
         error = array([0, 0], dtype=int32)
@@ -205,15 +248,11 @@ def _CS_KN(E):
     return impl
 
 
-overload(xraylib.CS_KN, jit_options=config.xrl.get("CS_KN", {}))(_CS_KN)
-overload(_xraylib.CS_KN, jit_options=config.xrl.get("CS_KN", {}))(_CS_KN)
-
-
-@overload(xraylib_np.CS_KN, jit_options=config.xrl_np.get("CS_KN", {}))
+@_overload_np
 def _CS_KN_np(E):
-    _check_types((E,), 0, 1, _np=True)
+    _check_types((E,), nf64=1, _np=True)
     _check_ndim(E)
-    xrl_fcn = _nint_ndouble("CS_KN", 0, 1)
+    xrl_fcn = _external_func(nf64=1)
 
     @vectorize
     def _impl(E):
@@ -222,9 +261,10 @@ def _CS_KN_np(E):
     return lambda E: _impl(E)
 
 
+@_overload
 def _DCS_Thoms(theta):
-    _check_types((theta,), 0, 1)
-    xrl_fcn = _nint_ndouble("DCS_Thoms", 0, 1)
+    _check_types((theta,), nf64=1)
+    xrl_fcn = _external_func(nf64=1)
 
     def impl(theta):
         return xrl_fcn(theta, 0)
@@ -232,15 +272,11 @@ def _DCS_Thoms(theta):
     return impl
 
 
-overload(xraylib.DCS_Thoms, jit_options=config.xrl.get("DCS_Thoms", {}))(_DCS_Thoms)
-overload(_xraylib.DCS_Thoms, jit_options=config.xrl.get("DCS_Thoms", {}))(_DCS_Thoms)
-
-
-@overload(xraylib_np.DCS_Thoms, jit_options=config.xrl_np.get("DCS_Thoms", {}))
+@_overload_np
 def _DCS_Thoms_np(theta):
-    _check_types((theta,), 0, 1, _np=True)
+    _check_types((theta,), nf64=1, _np=True)
     _check_ndim(theta)
-    xrl_fcn = _nint_ndouble("DCS_Thoms", 0, 1)
+    xrl_fcn = _external_func(nf64=1)
 
     @vectorize
     def _impl(theta):
@@ -252,9 +288,10 @@ def _DCS_Thoms_np(theta):
 # --------------------------------------- 2 int -------------------------------------- #
 
 
+@_overload
 def _AtomicLevelWidth(Z, shell):
-    _check_types((Z, shell), 2)
-    xrl_fcn = _nint_ndouble("AtomicLevelWidth", 2)
+    _check_types((Z, shell), ni32=2)
+    xrl_fcn = _external_func(ni32=2)
     msg = f"{Z_OUT_OF_RANGE} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell):
@@ -267,22 +304,11 @@ def _AtomicLevelWidth(Z, shell):
     return impl
 
 
-overload(xraylib.AtomicLevelWidth, jit_options=config.xrl.get("AtomicLevelWidth", {}))(
-    _AtomicLevelWidth,
-)
-overload(_xraylib.AtomicLevelWidth, jit_options=config.xrl.get("AtomicLevelWidth", {}))(
-    _AtomicLevelWidth,
-)
-
-
-@overload(
-    xraylib_np.AtomicLevelWidth,
-    jit_options=config.xrl_np.get("AtomicLevelWidth", {}),
-)
+@_overload_np
 def _AtomicLevelWidth_np(Z, shell):
-    _check_types((Z, shell), 2, _np=True)
+    _check_types((Z, shell), ni32=2, _np=True)
     _check_ndim(Z, shell)
-    xrl_fcn = _nint_ndouble("AtomicLevelWidth", 2)
+    xrl_fcn = _external_func(ni32=2)
     i0, i1 = _indices(Z, shell)
 
     @vectorize
@@ -299,9 +325,10 @@ def _AtomicLevelWidth_np(Z, shell):
     return impl
 
 
+@_overload
 def _AugerRate(Z, auger_trans):
-    _check_types((Z, auger_trans), 2)
-    xrl_fcn = _nint_ndouble("AugerRate", 2)
+    _check_types((Z, auger_trans), ni32=2)
+    xrl_fcn = _external_func(ni32=2)
     msg = f"{Z_OUT_OF_RANGE} | {UNKNOWN_AUGER} | {INVALID_AUGER}"
 
     def impl(Z, auger_trans):
@@ -314,15 +341,11 @@ def _AugerRate(Z, auger_trans):
     return impl
 
 
-overload(xraylib.AugerRate, jit_options=config.xrl.get("AugerRate", {}))(_AugerRate)
-overload(_xraylib.AugerRate, jit_options=config.xrl.get("AugerRate", {}))(_AugerRate)
-
-
-@overload(xraylib_np.AugerRate, jit_options=config.xrl_np.get("AugerRate", {}))
+@_overload_np
 def _AugerRate_np(Z, auger_trans):
-    _check_types((Z, auger_trans), 2, _np=True)
+    _check_types((Z, auger_trans), ni32=2, _np=True)
     _check_ndim(Z, auger_trans)
-    xrl_fcn = _nint_ndouble("AugerRate", 2)
+    xrl_fcn = _external_func(ni32=2)
     i0, i1 = _indices(Z, auger_trans)
 
     @vectorize
@@ -340,9 +363,10 @@ def _AugerRate_np(Z, auger_trans):
     return impl
 
 
+@_overload
 def _AugerYield(Z, shell):
-    _check_types((Z, shell), 2)
-    xrl_fcn = _nint_ndouble("AugerYield", 2)
+    _check_types((Z, shell), ni32=2)
+    xrl_fcn = _external_func(ni32=2)
     msg = f"{Z_OUT_OF_RANGE} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell):
@@ -355,15 +379,11 @@ def _AugerYield(Z, shell):
     return impl
 
 
-overload(xraylib.AugerYield, jit_options=config.xrl.get("AugerYield", {}))(_AugerYield)
-overload(_xraylib.AugerYield, jit_options=config.xrl.get("AugerYield", {}))(_AugerYield)
-
-
-@overload(xraylib_np.AugerYield, jit_options=config.xrl_np.get("AugerYield", {}))
+@_overload_np
 def _AugerYield_np(Z, shell):
-    _check_types((Z, shell), 2, _np=True)
+    _check_types((Z, shell), ni32=2, _np=True)
     _check_ndim(Z, shell)
-    xrl_fcn = _nint_ndouble("AugerYield", 2)
+    xrl_fcn = _external_func(ni32=2)
     i0, i1 = _indices(Z, shell)
 
     @vectorize
@@ -381,9 +401,10 @@ def _AugerYield_np(Z, shell):
     return impl
 
 
+@_overload
 def _CosKronTransProb(Z, trans):
-    _check_types((Z, trans), 2)
-    xrl_fcn = _nint_ndouble("CosKronTransProb", 2)
+    _check_types((Z, trans), ni32=2)
+    xrl_fcn = _external_func(ni32=2)
     msg = f"{Z_OUT_OF_RANGE} | {UNKNOWN_CK} | {INVALID_CK}"
 
     def impl(Z, trans):
@@ -396,22 +417,11 @@ def _CosKronTransProb(Z, trans):
     return impl
 
 
-overload(xraylib.CosKronTransProb, jit_options=config.xrl.get("CosKronTransProb", {}))(
-    _CosKronTransProb,
-)
-overload(_xraylib.CosKronTransProb, jit_options=config.xrl.get("CosKronTransProb", {}))(
-    _CosKronTransProb,
-)
-
-
-@overload(
-    xraylib_np.CosKronTransProb,
-    jit_options=config.xrl_np.get("CosKronTransProb", {}),
-)
+@_overload_np
 def _CosKronTransProb_np(Z, trans):
-    _check_types((Z, trans), 2, _np=True)
+    _check_types((Z, trans), ni32=2, _np=True)
     _check_ndim(Z, trans)
-    xrl_fcn = _nint_ndouble("CosKronTransProb", 2)
+    xrl_fcn = _external_func(ni32=2)
     i0, i1 = _indices(Z, trans)
 
     @vectorize
@@ -429,9 +439,10 @@ def _CosKronTransProb_np(Z, trans):
     return impl
 
 
+@_overload
 def _EdgeEnergy(Z, shell):
-    _check_types((Z, shell), 2)
-    xrl_fcn = _nint_ndouble("EdgeEnergy", 2)
+    _check_types((Z, shell), ni32=2)
+    xrl_fcn = _external_func(ni32=2)
     msg = f"{Z_OUT_OF_RANGE} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell):
@@ -444,15 +455,11 @@ def _EdgeEnergy(Z, shell):
     return impl
 
 
-overload(xraylib.EdgeEnergy, jit_options=config.xrl.get("EdgeEnergy", {}))(_EdgeEnergy)
-overload(_xraylib.EdgeEnergy, jit_options=config.xrl.get("EdgeEnergy", {}))(_EdgeEnergy)
-
-
-@overload(xraylib_np.EdgeEnergy, jit_options=config.xrl_np.get("EdgeEnergy", {}))
+@_overload_np
 def _EdgeEnergy_np(Z, shell):
-    _check_types((Z, shell), 2, _np=True)
+    _check_types((Z, shell), ni32=2, _np=True)
     _check_ndim(Z, shell)
-    xrl_fcn = _nint_ndouble("EdgeEnergy", 2)
+    xrl_fcn = _external_func(ni32=2)
     i0, i1 = _indices(Z, shell)
 
     @vectorize
@@ -470,9 +477,10 @@ def _EdgeEnergy_np(Z, shell):
     return impl
 
 
+@_overload
 def _ElectronConfig(Z, shell):
-    _check_types((Z, shell), 2)
-    xrl_fcn = _nint_ndouble("ElectronConfig", 2)
+    _check_types((Z, shell), ni32=2)
+    xrl_fcn = _external_func(ni32=2)
     msg = f"{Z_OUT_OF_RANGE} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell):
@@ -485,22 +493,11 @@ def _ElectronConfig(Z, shell):
     return impl
 
 
-overload(xraylib.ElectronConfig, jit_options=config.xrl.get("ElectronConfig", {}))(
-    _ElectronConfig,
-)
-overload(_xraylib.ElectronConfig, jit_options=config.xrl.get("ElectronConfig", {}))(
-    _ElectronConfig,
-)
-
-
-@overload(
-    xraylib_np.ElectronConfig,
-    jit_options=config.xrl_np.get("ElectronConfig", {}),
-)
+@_overload_np
 def _ElectronConfig_np(Z, shell):
-    _check_types((Z, shell), 2, _np=True)
+    _check_types((Z, shell), ni32=2, _np=True)
     _check_ndim(Z, shell)
-    xrl_fcn = _nint_ndouble("ElectronConfig", 2)
+    xrl_fcn = _external_func(ni32=2)
     i0, i1 = _indices(Z, shell)
 
     @vectorize
@@ -518,9 +515,10 @@ def _ElectronConfig_np(Z, shell):
     return impl
 
 
+@_overload
 def _FluorYield(Z, shell):
-    _check_types((Z, shell), 2)
-    xrl_fcn = _nint_ndouble("FluorYield", 2)
+    _check_types((Z, shell), ni32=2)
+    xrl_fcn = _external_func(ni32=2)
     msg = f"{Z_OUT_OF_RANGE} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell):
@@ -533,15 +531,11 @@ def _FluorYield(Z, shell):
     return impl
 
 
-overload(xraylib.FluorYield, jit_options=config.xrl.get("FluorYield", {}))(_FluorYield)
-overload(_xraylib.FluorYield, jit_options=config.xrl.get("FluorYield", {}))(_FluorYield)
-
-
-@overload(xraylib_np.FluorYield, jit_options=config.xrl_np.get("FluorYield", {}))
+@_overload_np
 def _FluorYield_np(Z, shell):
-    _check_types((Z, shell), 2, _np=True)
+    _check_types((Z, shell), ni32=2, _np=True)
     _check_ndim(Z, shell)
-    xrl_fcn = _nint_ndouble("FluorYield", 2)
+    xrl_fcn = _external_func(ni32=2)
     i0, i1 = _indices(Z, shell)
 
     @vectorize
@@ -559,9 +553,10 @@ def _FluorYield_np(Z, shell):
     return impl
 
 
+@_overload
 def _JumpFactor(Z, shell):
-    _check_types((Z, shell), 2)
-    xrl_fcn = _nint_ndouble("JumpFactor", 2)
+    _check_types((Z, shell), ni32=2)
+    xrl_fcn = _external_func(ni32=2)
     msg = f"{Z_OUT_OF_RANGE} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell):
@@ -574,15 +569,11 @@ def _JumpFactor(Z, shell):
     return impl
 
 
-overload(xraylib.JumpFactor, jit_options=config.xrl.get("JumpFactor", {}))(_JumpFactor)
-overload(_xraylib.JumpFactor, jit_options=config.xrl.get("JumpFactor", {}))(_JumpFactor)
-
-
-@overload(xraylib_np.JumpFactor, jit_options=config.xrl_np.get("JumpFactor", {}))
+@_overload_np
 def _JumpFactor_np(Z, shell):
-    _check_types((Z, shell), 2, _np=True)
+    _check_types((Z, shell), ni32=2, _np=True)
     _check_ndim(Z, shell)
-    xrl_fcn = _nint_ndouble("JumpFactor", 2)
+    xrl_fcn = _external_func(ni32=2)
     i0, i1 = _indices(Z, shell)
 
     @vectorize
@@ -600,9 +591,10 @@ def _JumpFactor_np(Z, shell):
     return impl
 
 
+@_overload
 def _LineEnergy(Z, line):
-    _check_types((Z, line), 2)
-    xrl_fcn = _nint_ndouble("LineEnergy", 2)
+    _check_types((Z, line), ni32=2)
+    xrl_fcn = _external_func(ni32=2)
     msg = f"{Z_OUT_OF_RANGE} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line):
@@ -615,15 +607,11 @@ def _LineEnergy(Z, line):
     return impl
 
 
-overload(xraylib.LineEnergy, jit_options=config.xrl.get("LineEnergy", {}))(_LineEnergy)
-overload(_xraylib.LineEnergy, jit_options=config.xrl.get("LineEnergy", {}))(_LineEnergy)
-
-
-@overload(xraylib_np.LineEnergy, jit_options=config.xrl_np.get("LineEnergy", {}))
+@_overload_np
 def _LineEnergy_np(Z, line):
-    _check_types((Z, line), 2, _np=True)
+    _check_types((Z, line), ni32=2, _np=True)
     _check_ndim(Z, line)
-    xrl_fcn = _nint_ndouble("LineEnergy", 2)
+    xrl_fcn = _external_func(ni32=2)
     i0, i1 = _indices(Z, line)
 
     @vectorize
@@ -641,9 +629,10 @@ def _LineEnergy_np(Z, line):
     return impl
 
 
+@_overload
 def _RadRate(Z, line):
-    _check_types((Z, line), 2)
-    xrl_fcn = _nint_ndouble("RadRate", 2)
+    _check_types((Z, line), ni32=2)
+    xrl_fcn = _external_func(ni32=2)
     msg = f"{Z_OUT_OF_RANGE} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line):
@@ -656,15 +645,11 @@ def _RadRate(Z, line):
     return impl
 
 
-overload(xraylib.RadRate, jit_options=config.xrl.get("RadRate", {}))(_RadRate)
-overload(_xraylib.RadRate, jit_options=config.xrl.get("RadRate", {}))(_RadRate)
-
-
-@overload(xraylib_np.RadRate, jit_options=config.xrl_np.get("RadRate", {}))
+@_overload_np
 def _RadRate_np(Z, line):
-    _check_types((Z, line), 2, _np=True)
+    _check_types((Z, line), ni32=2, _np=True)
     _check_ndim(Z, line)
-    xrl_fcn = _nint_ndouble("RadRate", 2)
+    xrl_fcn = _external_func(ni32=2)
     i0, i1 = _indices(Z, line)
 
     @vectorize
@@ -685,9 +670,10 @@ def _RadRate_np(Z, line):
 # ------------------------------------- 2 double ------------------------------------- #
 
 
+@_overload
 def _ComptonEnergy(E0, theta):
-    _check_types((E0, theta), 0, 2)
-    xrl_fcn = _nint_ndouble("ComptonEnergy", 0, 2)
+    _check_types((E0, theta), nf64=2)
+    xrl_fcn = _external_func(nf64=2)
     msg = NEGATIVE_ENERGY
 
     def impl(E0, theta):
@@ -700,19 +686,11 @@ def _ComptonEnergy(E0, theta):
     return impl
 
 
-overload(xraylib.ComptonEnergy, jit_options=config.xrl.get("ComptonEnergy", {}))(
-    _ComptonEnergy,
-)
-overload(_xraylib.ComptonEnergy, jit_options=config.xrl.get("ComptonEnergy", {}))(
-    _ComptonEnergy,
-)
-
-
-@overload(xraylib_np.ComptonEnergy, jit_options=config.xrl_np.get("ComptonEnergy", {}))
+@_overload_np
 def _ComptonEnergy_np(E0, theta):
-    _check_types((E0, theta), 0, 2, _np=True)
+    _check_types((E0, theta), nf64=2, _np=True)
     _check_ndim(E0, theta)
-    xrl_fcn = _nint_ndouble("ComptonEnergy", 0, 2)
+    xrl_fcn = _external_func(nf64=2)
     i0, i1 = _indices(E0, theta)
 
     @vectorize
@@ -730,9 +708,10 @@ def _ComptonEnergy_np(E0, theta):
     return impl
 
 
+@_overload
 def _DCS_KN(E, theta):
-    _check_types((E, theta), 0, 2)
-    xrl_fcn = _nint_ndouble("DCS_KN", 0, 2)
+    _check_types((E, theta), nf64=2)
+    xrl_fcn = _external_func(nf64=2)
 
     def impl(E, theta):
         error = array([0, 0], dtype=int32)
@@ -744,15 +723,11 @@ def _DCS_KN(E, theta):
     return impl
 
 
-overload(xraylib.DCS_KN, jit_options=config.xrl.get("DCS_KN", {}))(_DCS_KN)
-overload(_xraylib.DCS_KN, jit_options=config.xrl.get("DCS_KN", {}))(_DCS_KN)
-
-
-@overload(xraylib_np.DCS_KN, jit_options=config.xrl_np.get("DCS_KN", {}))
+@_overload_np
 def _DCS_KN_np(E, theta):
-    _check_types((E, theta), 0, 2, _np=True)
+    _check_types((E, theta), nf64=2, _np=True)
     _check_ndim(E, theta)
-    xrl_fcn = _nint_ndouble("DCS_KN", 0, 2)
+    xrl_fcn = _external_func(nf64=2)
     i0, i1 = _indices(E, theta)
 
     @vectorize
@@ -770,9 +745,10 @@ def _DCS_KN_np(E, theta):
     return impl
 
 
+@_overload
 def _DCSP_Thoms(theta, phi):
-    _check_types((theta, phi), 0, 2)
-    xrl_fcn = _nint_ndouble("DCSP_Thoms", 0, 2)
+    _check_types((theta, phi), nf64=2)
+    xrl_fcn = _external_func(nf64=2)
 
     def impl(theta, phi):
         return xrl_fcn(theta, phi, 0)
@@ -780,15 +756,11 @@ def _DCSP_Thoms(theta, phi):
     return impl
 
 
-overload(xraylib.DCSP_Thoms, jit_options=config.xrl.get("DCSP_Thoms", {}))(_DCSP_Thoms)
-overload(_xraylib.DCSP_Thoms, jit_options=config.xrl.get("DCSP_Thoms", {}))(_DCSP_Thoms)
-
-
-@overload(xraylib_np.DCSP_Thoms, jit_options=config.xrl_np.get("DCSP_Thoms", {}))
+@_overload_np
 def _DCSP_Thoms_np(theta, phi):
-    _check_types((theta, phi), 0, 2, _np=True)
+    _check_types((theta, phi), nf64=2, _np=True)
     _check_ndim(theta, phi)
-    xrl_fcn = _nint_ndouble("DCSP_Thoms", 0, 2)
+    xrl_fcn = _external_func(nf64=2)
     i0, i1 = _indices(theta, phi)
 
     @vectorize
@@ -806,9 +778,10 @@ def _DCSP_Thoms_np(theta, phi):
     return impl
 
 
+@_overload
 def _MomentTransf(E, theta):
-    _check_types((E, theta), 0, 2)
-    xrl_fcn = _nint_ndouble("MomentTransf", 0, 2)
+    _check_types((E, theta), nf64=2)
+    xrl_fcn = _external_func(nf64=2)
 
     def impl(E, theta):
         error = array([0, 0], dtype=int32)
@@ -820,19 +793,11 @@ def _MomentTransf(E, theta):
     return impl
 
 
-overload(xraylib.MomentTransf, jit_options=config.xrl.get("MomentTransf", {}))(
-    _MomentTransf,
-)
-overload(_xraylib.MomentTransf, jit_options=config.xrl.get("MomentTransf", {}))(
-    _MomentTransf,
-)
-
-
-@overload(xraylib_np.MomentTransf, jit_options=config.xrl_np.get("MomentTransf", {}))
+@_overload_np
 def _MomentTransf_np(E, theta):
-    _check_types((E, theta), 0, 2, _np=True)
+    _check_types((E, theta), nf64=2, _np=True)
     _check_ndim(E, theta)
-    xrl_fcn = _nint_ndouble("MomentTransf", 0, 2)
+    xrl_fcn = _external_func(nf64=2)
     i0, i1 = _indices(E, theta)
 
     @vectorize
@@ -853,9 +818,10 @@ def _MomentTransf_np(E, theta):
 # ---------------------------------- 1 int, 1 double --------------------------------- #
 
 
+@_overload
 def _ComptonProfile(Z, p):
-    _check_types((Z, p), 1, 1)
-    xrl_fcn = _nint_ndouble("ComptonProfile", 1, 1)
+    _check_types((Z, p), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_PZ} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, p):
@@ -868,22 +834,11 @@ def _ComptonProfile(Z, p):
     return impl
 
 
-overload(xraylib.ComptonProfile, jit_options=config.xrl.get("ComptonProfile", {}))(
-    _ComptonProfile,
-)
-overload(_xraylib.ComptonProfile, jit_options=config.xrl.get("ComptonProfile", {}))(
-    _ComptonProfile,
-)
-
-
-@overload(
-    xraylib_np.ComptonProfile,
-    jit_options=config.xrl_np.get("ComptonProfile", {}),
-)
+@_overload_np
 def _ComptonProfile_np(Z, p):
-    _check_types((Z, p), 1, 1, _np=True)
+    _check_types((Z, p), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, p)
-    xrl_fcn = _nint_ndouble("ComptonProfile", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, p)
 
     @vectorize
@@ -901,9 +856,10 @@ def _ComptonProfile_np(Z, p):
     return impl
 
 
+@_overload
 def _CS_Compt(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CS_Compt", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -916,15 +872,11 @@ def _CS_Compt(Z, E):
     return impl
 
 
-overload(xraylib.CS_Compt, jit_options=config.xrl.get("CS_Compt", {}))(_CS_Compt)
-overload(_xraylib.CS_Compt, jit_options=config.xrl.get("CS_Compt", {}))(_CS_Compt)
-
-
-@overload(xraylib_np.CS_Compt, jit_options=config.xrl_np.get("CS_Compt", {}))
+@_overload_np
 def _CS_Compt_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CS_Compt", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -942,9 +894,10 @@ def _CS_Compt_np(Z, E):
     return impl
 
 
+@_overload
 def _CS_Energy(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CS_Energy", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -957,15 +910,11 @@ def _CS_Energy(Z, E):
     return impl
 
 
-overload(xraylib.CS_Energy, jit_options=config.xrl.get("CS_Energy", {}))(_CS_Energy)
-overload(_xraylib.CS_Energy, jit_options=config.xrl.get("CS_Energy", {}))(_CS_Energy)
-
-
-@overload(xraylib_np.CS_Energy, jit_options=config.xrl_np.get("CS_Energy", {}))
-def _CS_Energy(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+@_overload_np
+def _CS_Energy_np(Z, E):
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CS_Energy", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -983,9 +932,10 @@ def _CS_Energy(Z, E):
     return impl
 
 
+@_overload
 def _CS_Photo(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CS_Photo", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -998,15 +948,11 @@ def _CS_Photo(Z, E):
     return impl
 
 
-overload(xraylib.CS_Photo, jit_options=config.xrl.get("CS_Photo", {}))(_CS_Photo)
-overload(_xraylib.CS_Photo, jit_options=config.xrl.get("CS_Photo", {}))(_CS_Photo)
-
-
-@overload(xraylib_np.CS_Photo, jit_options=config.xrl_np.get("CS_Photo", {}))
+@_overload_np
 def _CS_Photo_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CS_Photo", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1024,9 +970,10 @@ def _CS_Photo_np(Z, E):
     return impl
 
 
+@_overload
 def _CS_Photo_Total(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CS_Photo_Total", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = (
         f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION} "
         f"| {UNAVALIABLE_PHOTO_CS}"
@@ -1042,22 +989,11 @@ def _CS_Photo_Total(Z, E):
     return impl
 
 
-overload(xraylib.CS_Photo_Total, jit_options=config.xrl.get("CS_Photo_Total", {}))(
-    _CS_Photo_Total,
-)
-overload(_xraylib.CS_Photo_Total, jit_options=config.xrl.get("CS_Photo_Total", {}))(
-    _CS_Photo_Total,
-)
-
-
-@overload(
-    xraylib_np.CS_Photo_Total,
-    jit_options=config.xrl_np.get("CS_Photo_Total", {}),
-)
+@_overload_np
 def _CS_Photo_Total_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CS_Photo_Total", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1075,9 +1011,10 @@ def _CS_Photo_Total_np(Z, E):
     return impl
 
 
+@_overload
 def _CS_Rayl(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CS_Rayl", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -1090,15 +1027,11 @@ def _CS_Rayl(Z, E):
     return impl
 
 
-overload(xraylib.CS_Rayl, jit_options=config.xrl.get("CS_Rayl", {}))(_CS_Rayl)
-overload(_xraylib.CS_Rayl, jit_options=config.xrl.get("CS_Rayl", {}))(_CS_Rayl)
-
-
-@overload(xraylib_np.CS_Rayl, jit_options=config.xrl_np.get("CS_Rayl", {}))
+@_overload_np
 def _CS_Rayl_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CS_Rayl", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1116,9 +1049,10 @@ def _CS_Rayl_np(Z, E):
     return impl
 
 
+@_overload
 def _CS_Total(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CS_Total", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -1131,15 +1065,11 @@ def _CS_Total(Z, E):
     return impl
 
 
-overload(xraylib.CS_Total, jit_options=config.xrl.get("CS_Total", {}))(_CS_Total)
-overload(_xraylib.CS_Total, jit_options=config.xrl.get("CS_Total", {}))(_CS_Total)
-
-
-@overload(xraylib_np.CS_Total, jit_options=config.xrl_np.get("CS_Total", {}))
+@_overload_np
 def _CS_Total_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CS_Total", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1157,9 +1087,10 @@ def _CS_Total_np(Z, E):
     return impl
 
 
+@_overload
 def _CS_Total_Kissel(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CS_Total_Kissel", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -1172,22 +1103,11 @@ def _CS_Total_Kissel(Z, E):
     return impl
 
 
-overload(xraylib.CS_Total_Kissel, jit_options=config.xrl.get("CS_Total_Kissel", {}))(
-    _CS_Total_Kissel,
-)
-overload(_xraylib.CS_Total_Kissel, jit_options=config.xrl.get("CS_Total_Kissel", {}))(
-    _CS_Total_Kissel,
-)
-
-
-@overload(
-    xraylib_np.CS_Total_Kissel,
-    jit_options=config.xrl_np.get("CS_Total_Kissel", {}),
-)
+@_overload_np
 def _CS_Total_Kissel_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CS_Total_Kissel", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1205,9 +1125,10 @@ def _CS_Total_Kissel_np(Z, E):
     return impl
 
 
+@_overload
 def _CSb_Compt(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CSb_Compt", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -1220,15 +1141,11 @@ def _CSb_Compt(Z, E):
     return impl
 
 
-overload(xraylib.CSb_Compt, jit_options=config.xrl.get("CSb_Compt", {}))(_CSb_Compt)
-overload(_xraylib.CSb_Compt, jit_options=config.xrl.get("CSb_Compt", {}))(_CSb_Compt)
-
-
-@overload(xraylib_np.CSb_Compt, jit_options=config.xrl_np.get("CSb_Compt", {}))
+@_overload_np
 def _CSb_Compt_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CSb_Compt", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1246,9 +1163,10 @@ def _CSb_Compt_np(Z, E):
     return impl
 
 
+@_overload
 def _CSb_Photo(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CSb_Photo", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -1261,15 +1179,11 @@ def _CSb_Photo(Z, E):
     return impl
 
 
-overload(xraylib.CSb_Photo, jit_options=config.xrl.get("CSb_Photo", {}))(_CSb_Photo)
-overload(_xraylib.CSb_Photo, jit_options=config.xrl.get("CSb_Photo", {}))(_CSb_Photo)
-
-
-@overload(xraylib_np.CSb_Photo, jit_options=config.xrl_np.get("CSb_Photo", {}))
+@_overload_np
 def _CSb_Photo_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CSb_Photo", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1287,9 +1201,10 @@ def _CSb_Photo_np(Z, E):
     return impl
 
 
+@_overload
 def _CSb_Photo_Total(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CSb_Photo_Total", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -1302,22 +1217,11 @@ def _CSb_Photo_Total(Z, E):
     return impl
 
 
-overload(xraylib.CSb_Photo_Total, jit_options=config.xrl.get("CSb_Photo_Total", {}))(
-    _CSb_Photo_Total,
-)
-overload(_xraylib.CSb_Photo_Total, jit_options=config.xrl.get("CSb_Photo_Total", {}))(
-    _CSb_Photo_Total,
-)
-
-
-@overload(
-    xraylib_np.CSb_Photo_Total,
-    jit_options=config.xrl_np.get("CSb_Photo_Total", {}),
-)
-def _CSb_Photo_Total(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+@_overload_np
+def _CSb_Photo_Total_np(Z, E):
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CSb_Photo_Total", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1335,9 +1239,10 @@ def _CSb_Photo_Total(Z, E):
     return impl
 
 
+@_overload
 def _CSb_Rayl(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CSb_Rayl", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -1350,15 +1255,11 @@ def _CSb_Rayl(Z, E):
     return impl
 
 
-overload(xraylib.CSb_Rayl, jit_options=config.xrl.get("CSb_Rayl", {}))(_CSb_Rayl)
-overload(_xraylib.CSb_Rayl, jit_options=config.xrl.get("CSb_Rayl", {}))(_CSb_Rayl)
-
-
-@overload(xraylib_np.CSb_Rayl, jit_options=config.xrl_np.get("CSb_Rayl", {}))
+@_overload_np
 def _CSb_Rayl_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CSb_Rayl", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1376,9 +1277,10 @@ def _CSb_Rayl_np(Z, E):
     return impl
 
 
+@_overload
 def _CSb_Total(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CSb_Total", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -1391,15 +1293,11 @@ def _CSb_Total(Z, E):
     return impl
 
 
-overload(xraylib.CSb_Total, jit_options=config.xrl.get("CSb_Total", {}))(_CSb_Total)
-overload(_xraylib.CSb_Total, jit_options=config.xrl.get("CSb_Total", {}))(_CSb_Total)
-
-
-@overload(xraylib_np.CSb_Total, jit_options=config.xrl_np.get("CSb_Total", {}))
+@_overload_np
 def _CSb_Total_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CSb_Total", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1417,9 +1315,10 @@ def _CSb_Total_np(Z, E):
     return impl
 
 
+@_overload
 def _CSb_Total_Kissel(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("CSb_Total_Kissel", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -1432,22 +1331,11 @@ def _CSb_Total_Kissel(Z, E):
     return impl
 
 
-overload(xraylib.CSb_Total_Kissel, jit_options=config.xrl.get("CSb_Total_Kissel", {}))(
-    _CSb_Total_Kissel,
-)
-overload(_xraylib.CSb_Total_Kissel, jit_options=config.xrl.get("CSb_Total_Kissel", {}))(
-    _CSb_Total_Kissel,
-)
-
-
-@overload(
-    xraylib_np.CSb_Total_Kissel,
-    jit_options=config.xrl_np.get("CSb_Total_Kissel", {}),
-)
+@_overload_np
 def _CSb_Total_Kissel_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("CSb_Total_Kissel", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1465,9 +1353,10 @@ def _CSb_Total_Kissel_np(Z, E):
     return impl
 
 
+@_overload
 def _FF_Rayl(Z, q):
-    _check_types((Z, q), 1, 1)
-    xrl_fcn = _nint_ndouble("FF_Rayl", 1, 1)
+    _check_types((Z, q), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_Q} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, q):
@@ -1480,15 +1369,11 @@ def _FF_Rayl(Z, q):
     return impl
 
 
-overload(xraylib.FF_Rayl, jit_options=config.xrl.get("FF_Rayl", {}))(_FF_Rayl)
-overload(_xraylib.FF_Rayl, jit_options=config.xrl.get("FF_Rayl", {}))(_FF_Rayl)
-
-
-@overload(xraylib_np.FF_Rayl, jit_options=config.xrl_np.get("FF_Rayl", {}))
+@_overload_np
 def _FF_Rayl_np(Z, q):
-    _check_types((Z, q), 1, 1, _np=True)
+    _check_types((Z, q), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, q)
-    xrl_fcn = _nint_ndouble("FF_Rayl", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, q)
 
     @vectorize
@@ -1506,9 +1391,10 @@ def _FF_Rayl_np(Z, q):
     return impl
 
 
+@_overload
 def _SF_Compt(Z, q):
-    _check_types((Z, q), 1, 1)
-    xrl_fcn = _nint_ndouble("SF_Compt", 1, 1)
+    _check_types((Z, q), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_Q} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, q):
@@ -1521,15 +1407,11 @@ def _SF_Compt(Z, q):
     return impl
 
 
-overload(xraylib.SF_Compt, jit_options=config.xrl.get("SF_Compt", {}))(_SF_Compt)
-overload(_xraylib.SF_Compt, jit_options=config.xrl.get("SF_Compt", {}))(_SF_Compt)
-
-
-@overload(xraylib_np.SF_Compt, jit_options=config.xrl_np.get("SF_Compt", {}))
+@_overload_np
 def _SF_Compt_np(Z, q):
-    _check_types((Z, q), 1, 1, _np=True)
+    _check_types((Z, q), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, q)
-    xrl_fcn = _nint_ndouble("SF_Compt", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, q)
 
     @vectorize
@@ -1547,9 +1429,10 @@ def _SF_Compt_np(Z, q):
     return impl
 
 
+@_overload
 def _Fi(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("Fi", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -1562,15 +1445,11 @@ def _Fi(Z, E):
     return impl
 
 
-overload(xraylib.Fi, jit_options=config.xrl.get("Fi", {}))(_Fi)
-overload(_xraylib.Fi, jit_options=config.xrl.get("Fi", {}))(_Fi)
-
-
-@overload(xraylib_np.Fi, jit_options=config.xrl_np.get("Fi", {}))
+@_overload_np
 def _Fi_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("Fi", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1588,9 +1467,10 @@ def _Fi_np(Z, E):
     return impl
 
 
+@_overload
 def _Fii(Z, E):
-    _check_types((Z, E), 1, 1)
-    xrl_fcn = _nint_ndouble("Fii", 1, 1)
+    _check_types((Z, E), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, E):
@@ -1603,15 +1483,11 @@ def _Fii(Z, E):
     return impl
 
 
-overload(xraylib.Fii, jit_options=config.xrl.get("Fii", {}))(_Fii)
-overload(_xraylib.Fii, jit_options=config.xrl.get("Fii", {}))(_Fii)
-
-
-@overload(xraylib_np.Fii, jit_options=config.xrl_np.get("Fii", {}))
+@_overload_np
 def _Fii_np(Z, E):
-    _check_types((Z, E), 1, 1, _np=True)
+    _check_types((Z, E), ni32=1, nf64=1, _np=True)
     _check_ndim(Z, E)
-    xrl_fcn = _nint_ndouble("Fii", 1, 1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     i0, i1 = _indices(Z, E)
 
     @vectorize
@@ -1630,9 +1506,10 @@ def _Fii_np(Z, E):
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL1_pure_kissel(Z, energy):
-    _check_types((Z, energy), 1, 1)
-    xrl_fcn = _nint_ndouble("PL1_pure_kissel", 1, 1)
+    _check_types((Z, energy), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, energy):
@@ -1643,20 +1520,13 @@ def _PL1_pure_kissel(Z, energy):
         return result
 
     return impl
-
-
-overload(xraylib.PL1_pure_kissel, jit_options=config.xrl.get("PL1_pure_kissel", {}))(
-    _PL1_pure_kissel,
-)
-overload(_xraylib.PL1_pure_kissel, jit_options=config.xrl.get("PL1_pure_kissel", {}))(
-    _PL1_pure_kissel,
-)
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM1_pure_kissel(Z, energy):
-    _check_types((Z, energy), 1, 1)
-    xrl_fcn = _nint_ndouble("PM1_pure_kissel", 1, 1)
+    _check_types((Z, energy), ni32=1, nf64=1)
+    xrl_fcn = _external_func(ni32=1, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {SPLINE_EXTRAPOLATION}"
 
     def impl(Z, energy):
@@ -1668,20 +1538,14 @@ def _PM1_pure_kissel(Z, energy):
 
     return impl
 
-
-overload(xraylib.PM1_pure_kissel, jit_options=config.xrl.get("PM1_pure_kissel", {}))(
-    _PM1_pure_kissel,
-)
-overload(_xraylib.PM1_pure_kissel, jit_options=config.xrl.get("PM1_pure_kissel", {}))(
-    _PM1_pure_kissel,
-)
 
 # ---------------------------------- 2 int, 1 double --------------------------------- #
 
 
+@_overload
 def _ComptonProfile_Partial(Z, shell, pz):
-    _check_types((Z, shell, pz), 2, 1)
-    xrl_fcn = _nint_ndouble("ComptonProfile_Partial", 2, 1)
+    _check_types((Z, shell, pz), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = (
         f"{Z_OUT_OF_RANGE} | {NEGATIVE_PZ} | {SPLINE_EXTRAPOLATION} | {UNKNOWN_SHELL}"
         f" | {INVALID_SHELL}"
@@ -1697,24 +1561,11 @@ def _ComptonProfile_Partial(Z, shell, pz):
     return impl
 
 
-overload(
-    xraylib.ComptonProfile_Partial,
-    jit_options=config.xrl.get("ComptonProfile_Partial", {}),
-)(_ComptonProfile_Partial)
-overload(
-    _xraylib.ComptonProfile_Partial,
-    jit_options=config.xrl.get("ComptonProfile_Partial", {}),
-)(_ComptonProfile_Partial)
-
-
-@overload(
-    xraylib_np.ComptonProfile_Partial,
-    jit_options=config.xrl_np.get("ComptonProfile_Partial", {}),
-)
+@_overload_np
 def _ComptonProfile_Partial_np(Z, shell, pz):
-    _check_types((Z, shell, pz), 2, 1, _np=True)
+    _check_types((Z, shell, pz), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, pz)
-    xrl_fcn = _nint_ndouble("ComptonProfile_Partial", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, pz)
 
     @vectorize
@@ -1733,9 +1584,10 @@ def _ComptonProfile_Partial_np(Z, shell, pz):
     return impl
 
 
+@_overload
 def _CS_FluorLine_Kissel(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorLine_Kissel", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -1748,24 +1600,11 @@ def _CS_FluorLine_Kissel(Z, line, E):
     return impl
 
 
-overload(
-    xraylib.CS_FluorLine_Kissel,
-    jit_options=config.xrl.get("CS_FluorLine_Kissel", {}),
-)(_CS_FluorLine_Kissel)
-overload(
-    _xraylib.CS_FluorLine_Kissel,
-    jit_options=config.xrl.get("CS_FluorLine_Kissel", {}),
-)(_CS_FluorLine_Kissel)
-
-
-@overload(
-    xraylib_np.CS_FluorLine_Kissel,
-    jit_options=config.xrl_np.get("CS_FluorLine_Kissel", {}),
-)
+@_overload_np
 def _CS_FluorLine_Kissel_np(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CS_FluorLine_Kissel", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -1784,9 +1623,10 @@ def _CS_FluorLine_Kissel_np(Z, line, E):
     return impl
 
 
+@_overload
 def _CSb_FluorLine_Kissel(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine_Kissel", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -1799,24 +1639,11 @@ def _CSb_FluorLine_Kissel(Z, line, E):
     return impl
 
 
-overload(
-    xraylib.CSb_FluorLine_Kissel,
-    jit_options=config.xrl.get("CSb_FluorLine_Kissel", {}),
-)(_CSb_FluorLine_Kissel)
-overload(
-    _xraylib.CSb_FluorLine_Kissel,
-    jit_options=config.xrl.get("CSb_FluorLine_Kissel", {}),
-)(_CSb_FluorLine_Kissel)
-
-
-@overload(
-    xraylib_np.CSb_FluorLine_Kissel,
-    jit_options=config.xrl_np.get("CSb_FluorLine_Kissel", {}),
-)
+@_overload_np
 def _CSb_FluorLine_Kissel_np(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine_Kissel", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -1835,9 +1662,10 @@ def _CSb_FluorLine_Kissel_np(Z, line, E):
     return impl
 
 
+@_overload
 def _CS_FluorLine_Kissel_Cascade(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorLine_Kissel_Cascade", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -1850,24 +1678,11 @@ def _CS_FluorLine_Kissel_Cascade(Z, line, E):
     return impl
 
 
-overload(
-    xraylib.CS_FluorLine_Kissel_Cascade,
-    jit_options=config.xrl.get("CS_FluorLine_Kissel_Cascade", {}),
-)(_CS_FluorLine_Kissel_Cascade)
-overload(
-    _xraylib.CS_FluorLine_Kissel_Cascade,
-    jit_options=config.xrl.get("CS_FluorLine_Kissel_Cascade", {}),
-)(_CS_FluorLine_Kissel_Cascade)
-
-
-@overload(
-    xraylib_np.CS_FluorLine_Kissel_Cascade,
-    jit_options=config.xrl_np.get("CS_FluorLine_Kissel_Cascade", {}),
-)
+@_overload_np
 def _CS_FluorLine_Kissel_Cascade_np(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CS_FluorLine_Kissel_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -1886,9 +1701,10 @@ def _CS_FluorLine_Kissel_Cascade_np(Z, line, E):
     return impl
 
 
+@_overload
 def _CSb_FluorLine_Kissel_Cascade(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine_Kissel_Cascade", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -1901,24 +1717,11 @@ def _CSb_FluorLine_Kissel_Cascade(Z, line, E):
     return impl
 
 
-overload(
-    xraylib.CSb_FluorLine_Kissel_Cascade,
-    jit_options=config.xrl.get("CSb_FluorLine_Kissel_Cascade", {}),
-)(_CSb_FluorLine_Kissel_Cascade)
-overload(
-    _xraylib.CSb_FluorLine_Kissel_Cascade,
-    jit_options=config.xrl.get("CSb_FluorLine_Kissel_Cascade", {}),
-)(_CSb_FluorLine_Kissel_Cascade)
-
-
-@overload(
-    xraylib_np.CSb_FluorLine_Kissel_Cascade,
-    jit_options=config.xrl_np.get("CSb_FluorLine_Kissel_Cascade", {}),
-)
+@_overload_np
 def _CSb_FluorLine_Kissel_Cascade_np(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine_Kissel_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -1937,9 +1740,10 @@ def _CSb_FluorLine_Kissel_Cascade_np(Z, line, E):
     return impl
 
 
+@_overload
 def _CS_FluorLine_Kissel_no_Cascade(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorLine_Kissel_no_Cascade", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -1952,24 +1756,11 @@ def _CS_FluorLine_Kissel_no_Cascade(Z, line, E):
     return impl
 
 
-overload(
-    xraylib.CS_FluorLine_Kissel_no_Cascade,
-    jit_options=config.xrl.get("CS_FluorLine_Kissel_no_Cascade", {}),
-)(_CS_FluorLine_Kissel_no_Cascade)
-overload(
-    _xraylib.CS_FluorLine_Kissel_no_Cascade,
-    jit_options=config.xrl.get("CS_FluorLine_Kissel_no_Cascade", {}),
-)(_CS_FluorLine_Kissel_no_Cascade)
-
-
-@overload(
-    xraylib_np.CS_FluorLine_Kissel_no_Cascade,
-    jit_options=config.xrl_np.get("CS_FluorLine_Kissel_no_Cascade", {}),
-)
+@_overload_np
 def _CS_FluorLine_Kissel_no_Cascade_np(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CS_FluorLine_Kissel_no_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -1988,9 +1779,10 @@ def _CS_FluorLine_Kissel_no_Cascade_np(Z, line, E):
     return impl
 
 
+@_overload
 def _CSb_FluorLine_Kissel_no_Cascade(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine_Kissel_no_Cascade", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -2003,24 +1795,11 @@ def _CSb_FluorLine_Kissel_no_Cascade(Z, line, E):
     return impl
 
 
-overload(
-    xraylib.CSb_FluorLine_Kissel_no_Cascade,
-    jit_options=config.xrl.get("CSb_FluorLine_Kissel_no_Cascade", {}),
-)(_CSb_FluorLine_Kissel_no_Cascade)
-overload(
-    _xraylib.CSb_FluorLine_Kissel_no_Cascade,
-    jit_options=config.xrl.get("CSb_FluorLine_Kissel_no_Cascade", {}),
-)(_CSb_FluorLine_Kissel_no_Cascade)
-
-
-@overload(
-    xraylib_np.CSb_FluorLine_Kissel_no_Cascade,
-    jit_options=config.xrl_np.get("CSb_FluorLine_Kissel_no_Cascade", {}),
-)
+@_overload_np
 def _CSb_FluorLine_Kissel_no_Cascade_np(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine_Kissel_no_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -2039,9 +1818,10 @@ def _CSb_FluorLine_Kissel_no_Cascade_np(Z, line, E):
     return impl
 
 
+@_overload
 def _CS_FluorLine_Kissel_Nonradiative_Cascade(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorLine_Kissel_Nonradiative_Cascade", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -2054,24 +1834,11 @@ def _CS_FluorLine_Kissel_Nonradiative_Cascade(Z, line, E):
     return impl
 
 
-overload(
-    xraylib.CS_FluorLine_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl.get("CS_FluorLine_Kissel_Nonradiative_Cascade", {}),
-)(_CS_FluorLine_Kissel_Nonradiative_Cascade)
-overload(
-    _xraylib.CS_FluorLine_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl.get("CS_FluorLine_Kissel_Nonradiative_Cascade", {}),
-)(_CS_FluorLine_Kissel_Nonradiative_Cascade)
-
-
-@overload(
-    xraylib_np.CS_FluorLine_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl_np.get("CS_FluorLine_Kissel_Nonradiative_Cascade", {}),
-)
+@_overload_np
 def _CS_FluorLine_Kissel_Nonradiative_Cascade_np(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CS_FluorLine_Kissel_Nonradiative_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -2090,9 +1857,10 @@ def _CS_FluorLine_Kissel_Nonradiative_Cascade_np(Z, line, E):
     return impl
 
 
+@_overload
 def _CSb_FluorLine_Kissel_Nonradiative_Cascade(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine_Kissel_Nonradiative_Cascade", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -2105,24 +1873,11 @@ def _CSb_FluorLine_Kissel_Nonradiative_Cascade(Z, line, E):
     return impl
 
 
-overload(
-    xraylib.CSb_FluorLine_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl.get("CSb_FluorLine_Kissel_Nonradiative_Cascade", {}),
-)(_CSb_FluorLine_Kissel_Nonradiative_Cascade)
-overload(
-    _xraylib.CSb_FluorLine_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl.get("CSb_FluorLine_Kissel_Nonradiative_Cascade", {}),
-)(_CSb_FluorLine_Kissel_Nonradiative_Cascade)
-
-
-@overload(
-    xraylib_np.CSb_FluorLine_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl_np.get("CSb_FluorLine_Kissel_Nonradiative_Cascade", {}),
-)
+@_overload_np
 def _CSb_FluorLine_Kissel_Nonradiative_Cascade_np(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine_Kissel_Nonradiative_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -2141,9 +1896,10 @@ def _CSb_FluorLine_Kissel_Nonradiative_Cascade_np(Z, line, E):
     return impl
 
 
+@_overload
 def _CS_FluorLine_Kissel_Radiative_Cascade(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorLine_Kissel_Radiative_Cascade", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -2156,24 +1912,11 @@ def _CS_FluorLine_Kissel_Radiative_Cascade(Z, line, E):
     return impl
 
 
-overload(
-    xraylib.CS_FluorLine_Kissel_Radiative_Cascade,
-    jit_options=config.xrl.get("CS_FluorLine_Kissel_Radiative_Cascade", {}),
-)(_CS_FluorLine_Kissel_Radiative_Cascade)
-overload(
-    _xraylib.CS_FluorLine_Kissel_Radiative_Cascade,
-    jit_options=config.xrl.get("CS_FluorLine_Kissel_Radiative_Cascade", {}),
-)(_CS_FluorLine_Kissel_Radiative_Cascade)
-
-
-@overload(
-    xraylib_np.CS_FluorLine_Kissel_Radiative_Cascade,
-    jit_options=config.xrl_np.get("CS_FluorLine_Kissel_Radiative_Cascade", {}),
-)
-def _CS_FluorLine_Kissel_Radiative_Cascade(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+@_overload_np
+def _CS_FluorLine_Kissel_Radiative_Cascade_np(Z, line, E):
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CS_FluorLine_Kissel_Radiative_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -2192,9 +1935,10 @@ def _CS_FluorLine_Kissel_Radiative_Cascade(Z, line, E):
     return impl
 
 
+@_overload
 def _CSb_FluorLine_Kissel_Radiative_Cascade(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine_Kissel_Radiative_Cascade", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -2207,24 +1951,11 @@ def _CSb_FluorLine_Kissel_Radiative_Cascade(Z, line, E):
     return impl
 
 
-overload(
-    xraylib.CSb_FluorLine_Kissel_Radiative_Cascade,
-    jit_options=config.xrl.get("CSb_FluorLine_Kissel_Radiative_Cascade", {}),
-)(_CSb_FluorLine_Kissel_Radiative_Cascade)
-overload(
-    _xraylib.CSb_FluorLine_Kissel_Radiative_Cascade,
-    jit_options=config.xrl.get("CSb_FluorLine_Kissel_Radiative_Cascade", {}),
-)(_CSb_FluorLine_Kissel_Radiative_Cascade)
-
-
-@overload(
-    xraylib_np.CSb_FluorLine_Kissel_Radiative_Cascade,
-    jit_options=config.xrl_np.get("CSb_FluorLine_Kissel_Radiative_Cascade", {}),
-)
+@_overload_np
 def _CSb_FluorLine_Kissel_Radiative_Cascade_np(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine_Kissel_Radiative_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -2243,9 +1974,10 @@ def _CSb_FluorLine_Kissel_Radiative_Cascade_np(Z, line, E):
     return impl
 
 
+@_overload
 def _CS_FluorShell_Kissel(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorShell_Kissel", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2258,24 +1990,11 @@ def _CS_FluorShell_Kissel(Z, shell, E):
     return impl
 
 
-overload(
-    xraylib.CS_FluorShell_Kissel,
-    jit_options=config.xrl.get("CS_FluorShell_Kissel", {}),
-)(_CS_FluorShell_Kissel)
-overload(
-    _xraylib.CS_FluorShell_Kissel,
-    jit_options=config.xrl.get("CS_FluorShell_Kissel", {}),
-)(_CS_FluorShell_Kissel)
-
-
-@overload(
-    xraylib_np.CS_FluorShell_Kissel,
-    jit_options=config.xrl_np.get("CS_FluorShell_Kissel", {}),
-)
+@_overload_np
 def _CS_FluorShell_Kissel_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CS_FluorShell_Kissel", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2294,9 +2013,10 @@ def _CS_FluorShell_Kissel_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CSb_FluorShell_Kissel(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell_Kissel", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2309,24 +2029,11 @@ def _CSb_FluorShell_Kissel(Z, shell, E):
     return impl
 
 
-overload(
-    xraylib.CSb_FluorShell_Kissel,
-    jit_options=config.xrl.get("CSb_FluorShell_Kissel", {}),
-)(_CSb_FluorShell_Kissel)
-overload(
-    _xraylib.CSb_FluorShell_Kissel,
-    jit_options=config.xrl.get("CSb_FluorShell_Kissel", {}),
-)(_CSb_FluorShell_Kissel)
-
-
-@overload(
-    xraylib_np.CSb_FluorShell_Kissel,
-    jit_options=config.xrl_np.get("CSb_FluorShell_Kissel", {}),
-)
+@_overload_np
 def _CSb_FluorShell_Kissel_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell_Kissel", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2345,9 +2052,10 @@ def _CSb_FluorShell_Kissel_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CS_FluorShell_Kissel_Cascade(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorShell_Kissel_Cascade", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2360,24 +2068,11 @@ def _CS_FluorShell_Kissel_Cascade(Z, shell, E):
     return impl
 
 
-overload(
-    xraylib.CS_FluorShell_Kissel_Cascade,
-    jit_options=config.xrl.get("CS_FluorShell_Kissel_Cascade", {}),
-)(_CS_FluorShell_Kissel_Cascade)
-overload(
-    _xraylib.CS_FluorShell_Kissel_Cascade,
-    jit_options=config.xrl.get("CS_FluorShell_Kissel_Cascade", {}),
-)(_CS_FluorShell_Kissel_Cascade)
-
-
-@overload(
-    xraylib_np.CS_FluorShell_Kissel_Cascade,
-    jit_options=config.xrl_np.get("CS_FluorShell_Kissel_Cascade", {}),
-)
+@_overload_np
 def _CS_FluorShell_Kissel_Cascade_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CS_FluorShell_Kissel_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2396,9 +2091,10 @@ def _CS_FluorShell_Kissel_Cascade_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CSb_FluorShell_Kissel_Cascade(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell_Kissel_Cascade", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2411,24 +2107,11 @@ def _CSb_FluorShell_Kissel_Cascade(Z, shell, E):
     return impl
 
 
-overload(
-    xraylib.CSb_FluorShell_Kissel_Cascade,
-    jit_options=config.xrl.get("CSb_FluorShell_Kissel_Cascade", {}),
-)(_CSb_FluorShell_Kissel_Cascade)
-overload(
-    _xraylib.CSb_FluorShell_Kissel_Cascade,
-    jit_options=config.xrl.get("CSb_FluorShell_Kissel_Cascade", {}),
-)(_CSb_FluorShell_Kissel_Cascade)
-
-
-@overload(
-    xraylib_np.CSb_FluorShell_Kissel_Cascade,
-    jit_options=config.xrl_np.get("CSb_FluorShell_Kissel_Cascade", {}),
-)
+@_overload_np
 def _CSb_FluorShell_Kissel_Cascade_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell_Kissel_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2447,9 +2130,10 @@ def _CSb_FluorShell_Kissel_Cascade_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CS_FluorShell_Kissel_no_Cascade(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorShell_Kissel_no_Cascade", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2462,24 +2146,11 @@ def _CS_FluorShell_Kissel_no_Cascade(Z, shell, E):
     return impl
 
 
-overload(
-    xraylib.CS_FluorShell_Kissel_no_Cascade,
-    jit_options=config.xrl.get("CS_FluorShell_Kissel_no_Cascade", {}),
-)(_CS_FluorShell_Kissel_no_Cascade)
-overload(
-    _xraylib.CS_FluorShell_Kissel_no_Cascade,
-    jit_options=config.xrl.get("CS_FluorShell_Kissel_no_Cascade", {}),
-)(_CS_FluorShell_Kissel_no_Cascade)
-
-
-@overload(
-    xraylib_np.CS_FluorShell_Kissel_no_Cascade,
-    jit_options=config.xrl_np.get("CS_FluorShell_Kissel_no_Cascade", {}),
-)
+@_overload_np
 def _CS_FluorShell_Kissel_no_Cascade_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CS_FluorShell_Kissel_no_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2498,9 +2169,10 @@ def _CS_FluorShell_Kissel_no_Cascade_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CSb_FluorShell_Kissel_no_Cascade(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell_Kissel_no_Cascade", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2513,24 +2185,11 @@ def _CSb_FluorShell_Kissel_no_Cascade(Z, shell, E):
     return impl
 
 
-overload(
-    xraylib.CSb_FluorShell_Kissel_no_Cascade,
-    jit_options=config.xrl.get("CSb_FluorShell_Kissel_no_Cascade", {}),
-)(_CSb_FluorShell_Kissel_no_Cascade)
-overload(
-    _xraylib.CSb_FluorShell_Kissel_no_Cascade,
-    jit_options=config.xrl.get("CSb_FluorShell_Kissel_no_Cascade", {}),
-)(_CSb_FluorShell_Kissel_no_Cascade)
-
-
-@overload(
-    xraylib_np.CSb_FluorShell_Kissel_no_Cascade,
-    jit_options=config.xrl_np.get("CSb_FluorShell_Kissel_no_Cascade", {}),
-)
+@_overload_np
 def _CSb_FluorShell_Kissel_no_Cascade_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell_Kissel_no_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2549,9 +2208,10 @@ def _CSb_FluorShell_Kissel_no_Cascade_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CS_FluorShell_Kissel_Nonradiative_Cascade(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorShell_Kissel_Nonradiative_Cascade", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2564,24 +2224,11 @@ def _CS_FluorShell_Kissel_Nonradiative_Cascade(Z, shell, E):
     return impl
 
 
-overload(
-    xraylib.CS_FluorShell_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl.get("CS_FluorShell_Kissel_Nonradiative_Cascade", {}),
-)(_CS_FluorShell_Kissel_Nonradiative_Cascade)
-overload(
-    _xraylib.CS_FluorShell_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl.get("CS_FluorShell_Kissel_Nonradiative_Cascade", {}),
-)(_CS_FluorShell_Kissel_Nonradiative_Cascade)
-
-
-@overload(
-    xraylib_np.CS_FluorShell_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl_np.get("CS_FluorShell_Kissel_Nonradiative_Cascade", {}),
-)
+@_overload_np
 def _CS_FluorShell_Kissel_Nonradiative_Cascade_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CS_FluorShell_Kissel_Nonradiative_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2600,9 +2247,10 @@ def _CS_FluorShell_Kissel_Nonradiative_Cascade_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CSb_FluorShell_Kissel_Nonradiative_Cascade(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell_Kissel_Nonradiative_Cascade", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2615,24 +2263,11 @@ def _CSb_FluorShell_Kissel_Nonradiative_Cascade(Z, shell, E):
     return impl
 
 
-overload(
-    xraylib.CSb_FluorShell_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl.get("CSb_FluorShell_Kissel_Nonradiative_Cascade", {}),
-)(_CSb_FluorShell_Kissel_Nonradiative_Cascade)
-overload(
-    _xraylib.CSb_FluorShell_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl.get("CSb_FluorShell_Kissel_Nonradiative_Cascade", {}),
-)(_CSb_FluorShell_Kissel_Nonradiative_Cascade)
-
-
-@overload(
-    xraylib_np.CSb_FluorShell_Kissel_Nonradiative_Cascade,
-    jit_options=config.xrl_np.get("CSb_FluorShell_Kissel_Nonradiative_Cascade", {}),
-)
+@_overload_np
 def _CSb_FluorShell_Kissel_Nonradiative_Cascade_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell_Kissel_Nonradiative_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2651,9 +2286,10 @@ def _CSb_FluorShell_Kissel_Nonradiative_Cascade_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CS_FluorShell_Kissel_Radiative_Cascade(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorShell_Kissel_Radiative_Cascade", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2666,24 +2302,11 @@ def _CS_FluorShell_Kissel_Radiative_Cascade(Z, shell, E):
     return impl
 
 
-overload(
-    xraylib.CS_FluorShell_Kissel_Radiative_Cascade,
-    jit_options=config.xrl.get("CS_FluorShell_Kissel_Radiative_Cascade", {}),
-)(_CS_FluorShell_Kissel_Radiative_Cascade)
-overload(
-    _xraylib.CS_FluorShell_Kissel_Radiative_Cascade,
-    jit_options=config.xrl.get("CS_FluorShell_Kissel_Radiative_Cascade", {}),
-)(_CS_FluorShell_Kissel_Radiative_Cascade)
-
-
-@overload(
-    xraylib_np.CS_FluorShell_Kissel_Radiative_Cascade,
-    jit_options=config.xrl_np.get("CS_FluorShell_Kissel_Radiative_Cascade", {}),
-)
+@_overload_np
 def _CS_FluorShell_Kissel_Radiative_Cascade_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CS_FluorShell_Kissel_Radiative_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2702,9 +2325,10 @@ def _CS_FluorShell_Kissel_Radiative_Cascade_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CSb_FluorShell_Kissel_Radiative_Cascade(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell_Kissel_Radiative_Cascade", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2717,24 +2341,11 @@ def _CSb_FluorShell_Kissel_Radiative_Cascade(Z, shell, E):
     return impl
 
 
-overload(
-    xraylib.CSb_FluorShell_Kissel_Radiative_Cascade,
-    jit_options=config.xrl.get("CSb_FluorShell_Kissel_Radiative_Cascade", {}),
-)(_CSb_FluorShell_Kissel_Radiative_Cascade)
-overload(
-    _xraylib.CSb_FluorShell_Kissel_Radiative_Cascade,
-    jit_options=config.xrl.get("CSb_FluorShell_Kissel_Radiative_Cascade", {}),
-)(_CSb_FluorShell_Kissel_Radiative_Cascade)
-
-
-@overload(
-    xraylib_np.CSb_FluorShell_Kissel_Radiative_Cascade,
-    jit_options=config.xrl_np.get("CSb_FluorShell_Kissel_Radiative_Cascade", {}),
-)
+@_overload_np
 def _CSb_FluorShell_Kissel_Radiative_Cascade_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell_Kissel_Radiative_Cascade", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2753,9 +2364,10 @@ def _CSb_FluorShell_Kissel_Radiative_Cascade_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CS_FluorLine(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorLine", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -2768,19 +2380,11 @@ def _CS_FluorLine(Z, line, E):
     return impl
 
 
-overload(xraylib.CS_FluorLine, jit_options=config.xrl.get("CS_FluorLine", {}))(
-    _CS_FluorLine,
-)
-overload(_xraylib.CS_FluorLine, jit_options=config.xrl.get("CS_FluorLine", {}))(
-    _CS_FluorLine,
-)
-
-
-@overload(xraylib_np.CS_FluorLine, jit_options=config.xrl_np.get("CS_FluorLine", {}))
-def _CS_FluorLine(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+@_overload_np
+def _CS_FluorLine_np(Z, line, E):
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CS_FluorLine", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -2799,9 +2403,10 @@ def _CS_FluorLine(Z, line, E):
     return impl
 
 
+@_overload
 def _CSb_FluorLine(Z, line, E):
-    _check_types((Z, line, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine", 2, 1)
+    _check_types((Z, line, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_LINE} | {INVALID_LINE}"
 
     def impl(Z, line, E):
@@ -2814,19 +2419,11 @@ def _CSb_FluorLine(Z, line, E):
     return impl
 
 
-overload(xraylib.CSb_FluorLine, jit_options=config.xrl.get("CSb_FluorLine", {}))(
-    _CSb_FluorLine,
-)
-overload(_xraylib.CSb_FluorLine, jit_options=config.xrl.get("CSb_FluorLine", {}))(
-    _CSb_FluorLine,
-)
-
-
-@overload(xraylib_np.CSb_FluorLine, jit_options=config.xrl_np.get("CSb_FluorLine", {}))
+@_overload_np
 def _CSb_FluorLine_np(Z, line, E):
-    _check_types((Z, line, E), 2, 1, _np=True)
+    _check_types((Z, line, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, line, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorLine", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, line, E)
 
     @vectorize
@@ -2845,9 +2442,10 @@ def _CSb_FluorLine_np(Z, line, E):
     return impl
 
 
+@_overload
 def _CS_FluorShell(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_FluorShell", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2860,19 +2458,11 @@ def _CS_FluorShell(Z, shell, E):
     return impl
 
 
-overload(xraylib.CS_FluorShell, jit_options=config.xrl.get("CS_FluorShell", {}))(
-    _CS_FluorShell,
-)
-overload(_xraylib.CS_FluorShell, jit_options=config.xrl.get("CS_FluorShell", {}))(
-    _CS_FluorShell,
-)
-
-
-@overload(xraylib_np.CS_FluorShell, jit_options=config.xrl_np.get("CS_FluorShell", {}))
+@_overload_np
 def _CS_FluorShell_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CS_FluorShell", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2891,9 +2481,10 @@ def _CS_FluorShell_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CSb_FluorShell(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2906,22 +2497,11 @@ def _CSb_FluorShell(Z, shell, E):
     return impl
 
 
-overload(xraylib.CSb_FluorShell, jit_options=config.xrl.get("CSb_FluorShell", {}))(
-    _CSb_FluorShell,
-)
-overload(_xraylib.CSb_FluorShell, jit_options=config.xrl.get("CSb_FluorShell", {}))(
-    _CSb_FluorShell,
-)
-
-
-@overload(
-    xraylib_np.CSb_FluorShell,
-    jit_options=config.xrl_np.get("CSb_FluorShell", {}),
-)
+@_overload_np
 def _CSb_FluorShell_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CSb_FluorShell", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2940,9 +2520,10 @@ def _CSb_FluorShell_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CS_Photo_Partial(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CS_Photo_Partial", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -2955,22 +2536,11 @@ def _CS_Photo_Partial(Z, shell, E):
     return impl
 
 
-overload(xraylib.CS_Photo_Partial, jit_options=config.xrl.get("CS_Photo_Partial", {}))(
-    _CS_Photo_Partial,
-)
-overload(_xraylib.CS_Photo_Partial, jit_options=config.xrl.get("CS_Photo_Partial", {}))(
-    _CS_Photo_Partial,
-)
-
-
-@overload(
-    xraylib_np.CS_Photo_Partial,
-    jit_options=config.xrl_np.get("CS_Photo_Partial", {}),
-)
+@_overload_np
 def _CS_Photo_Partial_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CS_Photo_Partial", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -2989,9 +2559,10 @@ def _CS_Photo_Partial_np(Z, shell, E):
     return impl
 
 
+@_overload
 def _CSb_Photo_Partial(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1)
-    xrl_fcn = _nint_ndouble("CSb_Photo_Partial", 2, 1)
+    _check_types((Z, shell, E), ni32=2, nf64=1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY} | {UNKNOWN_SHELL} | {INVALID_SHELL}"
 
     def impl(Z, shell, E):
@@ -3004,24 +2575,11 @@ def _CSb_Photo_Partial(Z, shell, E):
     return impl
 
 
-overload(
-    xraylib.CSb_Photo_Partial,
-    jit_options=config.xrl.get("CSb_Photo_Partial", {}),
-)(_CSb_Photo_Partial)
-overload(
-    _xraylib.CSb_Photo_Partial,
-    jit_options=config.xrl.get("CSb_Photo_Partial", {}),
-)(_CSb_Photo_Partial)
-
-
-@overload(
-    xraylib_np.CSb_Photo_Partial,
-    jit_options=config.xrl_np.get("CSb_Photo_Partial", {}),
-)
+@_overload_np
 def _CSb_Photo_Partial_np(Z, shell, E):
-    _check_types((Z, shell, E), 2, 1, _np=True)
+    _check_types((Z, shell, E), ni32=2, nf64=1, _np=True)
     _check_ndim(Z, shell, E)
-    xrl_fcn = _nint_ndouble("CSb_Photo_Partial", 2, 1)
+    xrl_fcn = _external_func(ni32=2, nf64=1)
     i0, i1, i2 = _indices(Z, shell, E)
 
     @vectorize
@@ -3041,9 +2599,10 @@ def _CSb_Photo_Partial_np(Z, shell, E):
 # ---------------------------------- 1 int, 2 double --------------------------------- #
 
 
+@_overload
 def _DCS_Compt(Z, E, theta):
-    _check_types((Z, E, theta), 1, 2)
-    xrl_fcn = _nint_ndouble("DCS_Compt", 1, 2)
+    _check_types((Z, E, theta), ni32=1, nf64=2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta):
@@ -3056,15 +2615,11 @@ def _DCS_Compt(Z, E, theta):
     return impl
 
 
-overload(xraylib.DCS_Compt, jit_options=config.xrl.get("DCS_Compt", {}))(_DCS_Compt)
-overload(_xraylib.DCS_Compt, jit_options=config.xrl.get("DCS_Compt", {}))(_DCS_Compt)
-
-
-@overload(xraylib_np.DCS_Compt, jit_options=config.xrl_np.get("DCS_Compt", {}))
+@_overload_np
 def _DCS_Compt_np(Z, E, theta):
-    _check_types((Z, E, theta), 1, 2, _np=True)
+    _check_types((Z, E, theta), ni32=1, nf64=2, _np=True)
     _check_ndim(Z, E, theta)
-    xrl_fcn = _nint_ndouble("DCS_Compt", 1, 2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     i0, i1, i2 = _indices(Z, E, theta)
 
     @vectorize
@@ -3081,9 +2636,10 @@ def _DCS_Compt_np(Z, E, theta):
     return impl
 
 
+@_overload
 def _DCS_Rayl(Z, E, theta):
-    _check_types((Z, E, theta), 1, 2)
-    xrl_fcn = _nint_ndouble("DCS_Rayl", 1, 2)
+    _check_types((Z, E, theta), ni32=1, nf64=2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta):
@@ -3096,15 +2652,11 @@ def _DCS_Rayl(Z, E, theta):
     return impl
 
 
-overload(xraylib.DCS_Rayl, jit_options=config.xrl.get("DCS_Rayl", {}))(_DCS_Rayl)
-overload(_xraylib.DCS_Rayl, jit_options=config.xrl.get("DCS_Rayl", {}))(_DCS_Rayl)
-
-
-@overload(xraylib_np.DCS_Rayl, jit_options=config.xrl_np.get("DCS_Rayl", {}))
+@_overload_np
 def _DCS_Rayl_np(Z, E, theta):
-    _check_types((Z, E, theta), 1, 2, _np=True)
+    _check_types((Z, E, theta), ni32=1, nf64=2, _np=True)
     _check_ndim(Z, E, theta)
-    xrl_fcn = _nint_ndouble("DCS_Rayl", 1, 2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     i0, i1, i2 = _indices(Z, E, theta)
 
     @vectorize
@@ -3122,9 +2674,10 @@ def _DCS_Rayl_np(Z, E, theta):
     return impl
 
 
+@_overload
 def _DCSb_Compt(Z, E, theta):
-    _check_types((Z, E, theta), 1, 2)
-    xrl_fcn = _nint_ndouble("DCSb_Compt", 1, 2)
+    _check_types((Z, E, theta), ni32=1, nf64=2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta):
@@ -3137,15 +2690,11 @@ def _DCSb_Compt(Z, E, theta):
     return impl
 
 
-overload(xraylib.DCSb_Compt, jit_options=config.xrl.get("DCSb_Compt", {}))(_DCSb_Compt)
-overload(_xraylib.DCSb_Compt, jit_options=config.xrl.get("DCSb_Compt", {}))(_DCSb_Compt)
-
-
-@overload(xraylib_np.DCSb_Compt, jit_options=config.xrl_np.get("DCSb_Compt", {}))
+@_overload_np
 def _DCSb_Compt_np(Z, E, theta):
-    _check_types((Z, E, theta), 1, 2, _np=True)
+    _check_types((Z, E, theta), ni32=1, nf64=2, _np=True)
     _check_ndim(Z, E, theta)
-    xrl_fcn = _nint_ndouble("DCSb_Compt", 1, 2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     i0, i1, i2 = _indices(Z, E, theta)
 
     @vectorize
@@ -3162,9 +2711,10 @@ def _DCSb_Compt_np(Z, E, theta):
     return impl
 
 
+@_overload
 def _DCSb_Rayl(Z, E, theta):
-    _check_types((Z, E, theta), 1, 2)
-    xrl_fcn = _nint_ndouble("DCSb_Rayl", 1, 2)
+    _check_types((Z, E, theta), ni32=1, nf64=2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta):
@@ -3177,15 +2727,11 @@ def _DCSb_Rayl(Z, E, theta):
     return impl
 
 
-overload(xraylib.DCSb_Rayl, jit_options=config.xrl.get("DCSb_Rayl", {}))(_DCSb_Rayl)
-overload(_xraylib.DCSb_Rayl, jit_options=config.xrl.get("DCSb_Rayl", {}))(_DCSb_Rayl)
-
-
-@overload(xraylib_np.DCSb_Rayl, jit_options=config.xrl_np.get("DCSb_Rayl", {}))
+@_overload_np
 def _DCSb_Rayl_np(Z, E, theta):
-    _check_types((Z, E, theta), 1, 2, _np=True)
+    _check_types((Z, E, theta), ni32=1, nf64=2, _np=True)
     _check_ndim(Z, E, theta)
-    xrl_fcn = _nint_ndouble("DCSb_Rayl", 1, 2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     i0, i1, i2 = _indices(Z, E, theta)
 
     @vectorize
@@ -3203,9 +2749,10 @@ def _DCSb_Rayl_np(Z, E, theta):
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL1_auger_cascade_kissel(Z, E, PK):
-    _check_types((Z, E, PK), 1, 2)
-    xrl_fcn = _nint_ndouble("PL1_auger_cascade_kissel", 1, 2)
+    _check_types((Z, E, PK), ni32=1, nf64=2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK):
@@ -3218,21 +2765,11 @@ def _PL1_auger_cascade_kissel(Z, E, PK):
     return impl
 
 
-overload(
-    xraylib.PL1_auger_cascade_kissel,
-    jit_options=config.xrl.get("PL1_auger_cascade_kissel", {}),
-)(_PL1_auger_cascade_kissel)
-
-overload(
-    _xraylib.PL1_auger_cascade_kissel,
-    jit_options=config.xrl.get("PL1_auger_cascade_kissel", {}),
-)(_PL1_auger_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL1_full_cascade_kissel(Z, E, PK):
-    _check_types((Z, E, PK), 1, 2)
-    xrl_fcn = _nint_ndouble("PL1_full_cascade_kissel", 1, 2)
+    _check_types((Z, E, PK), ni32=1, nf64=2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK):
@@ -3245,20 +2782,11 @@ def _PL1_full_cascade_kissel(Z, E, PK):
     return impl
 
 
-overload(
-    xraylib.PL1_full_cascade_kissel,
-    jit_options=config.xrl.get("PL1_full_cascade_kissel", {}),
-)(_PL1_full_cascade_kissel)
-overload(
-    _xraylib.PL1_full_cascade_kissel,
-    jit_options=config.xrl.get("PL1_full_cascade_kissel", {}),
-)(_PL1_full_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL1_rad_cascade_kissel(Z, E, PK):
-    _check_types((Z, E, PK), 1, 2)
-    xrl_fcn = _nint_ndouble("PL1_rad_cascade_kissel", 1, 2)
+    _check_types((Z, E, PK), ni32=1, nf64=2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK):
@@ -3271,20 +2799,11 @@ def _PL1_rad_cascade_kissel(Z, E, PK):
     return impl
 
 
-overload(
-    xraylib.PL1_rad_cascade_kissel,
-    jit_options=config.xrl.get("PL1_rad_cascade_kissel", {}),
-)(_PL1_rad_cascade_kissel)
-overload(
-    _xraylib.PL1_rad_cascade_kissel,
-    jit_options=config.xrl.get("PL1_rad_cascade_kissel", {}),
-)(_PL1_rad_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL2_pure_kissel(Z, E, PL1):
-    _check_types((Z, E, PL1), 1, 2)
-    xrl_fcn = _nint_ndouble("PL2_pure_kissel", 1, 2)
+    _check_types((Z, E, PL1), ni32=1, nf64=2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PL1):
@@ -3297,18 +2816,11 @@ def _PL2_pure_kissel(Z, E, PL1):
     return impl
 
 
-overload(xraylib.PL2_pure_kissel, jit_options=config.xrl.get("PL2_pure_kissel", {}))(
-    _PL2_pure_kissel,
-)
-overload(_xraylib.PL2_pure_kissel, jit_options=config.xrl.get("PL2_pure_kissel", {}))(
-    _PL2_pure_kissel,
-)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM2_pure_kissel(Z, E, PM1):
-    _check_types((Z, E, PM1), 1, 2)
-    xrl_fcn = _nint_ndouble("PM2_pure_kissel", 1, 2)
+    _check_types((Z, E, PM1), ni32=1, nf64=2)
+    xrl_fcn = _external_func(ni32=1, nf64=2)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PM1):
@@ -3321,20 +2833,13 @@ def _PM2_pure_kissel(Z, E, PM1):
     return impl
 
 
-overload(xraylib.PM2_pure_kissel, jit_options=config.xrl.get("PM2_pure_kissel", {}))(
-    _PM2_pure_kissel,
-)
-overload(_xraylib.PM2_pure_kissel, jit_options=config.xrl.get("PM2_pure_kissel", {}))(
-    _PM2_pure_kissel,
-)
-
-
 # ---------------------------------- 1 int, 3 double --------------------------------- #
 
 
+@_overload
 def _DCSP_Rayl(Z, E, theta, phi):
-    _check_types((Z, E, theta, phi), 1, 3)
-    xrl_fcn = _nint_ndouble("DCSP_Rayl", 1, 3)
+    _check_types((Z, E, theta, phi), ni32=1, nf64=3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi):
@@ -3347,15 +2852,11 @@ def _DCSP_Rayl(Z, E, theta, phi):
     return impl
 
 
-overload(xraylib.DCSP_Rayl, jit_options=config.xrl.get("DCSP_Rayl", {}))(_DCSP_Rayl)
-overload(_xraylib.DCSP_Rayl, jit_options=config.xrl.get("DCSP_Rayl", {}))(_DCSP_Rayl)
-
-
-@overload(xraylib_np.DCSP_Rayl, jit_options=config.xrl_np.get("DCSP_Rayl", {}))
+@_overload_np
 def _DCSP_Rayl_np(Z, E, theta, phi):
-    _check_types((Z, E, theta, phi), 1, 3, _np=True)
+    _check_types((Z, E, theta, phi), ni32=1, nf64=3, _np=True)
     _check_ndim(Z, E, theta, phi)
-    xrl_fcn = _nint_ndouble("DCSP_Rayl", 1, 3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     i0, i1, i2, i3 = _indices(Z, E, theta, phi)
 
     @vectorize
@@ -3373,9 +2874,10 @@ def _DCSP_Rayl_np(Z, E, theta, phi):
     return impl
 
 
+@_overload
 def _DCSP_Compt(Z, E, theta, phi):
-    _check_types((Z, E, theta, phi), 1, 3)
-    xrl_fcn = _nint_ndouble("DCSP_Compt", 1, 3)
+    _check_types((Z, E, theta, phi), ni32=1, nf64=3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi):
@@ -3388,15 +2890,11 @@ def _DCSP_Compt(Z, E, theta, phi):
     return impl
 
 
-overload(xraylib.DCSP_Compt, jit_options=config.xrl.get("DCSP_Compt", {}))(_DCSP_Compt)
-overload(_xraylib.DCSP_Compt, jit_options=config.xrl.get("DCSP_Compt", {}))(_DCSP_Compt)
-
-
-@overload(xraylib_np.DCSP_Compt, jit_options=config.xrl_np.get("DCSP_Compt", {}))
+@_overload_np
 def _DCSP_Compt_np(Z, E, theta, phi):
-    _check_types((Z, E, theta, phi), 1, 3, _np=True)
+    _check_types((Z, E, theta, phi), ni32=1, nf64=3, _np=True)
     _check_ndim(Z, E, theta, phi)
-    xrl_fcn = _nint_ndouble("DCSP_Compt", 1, 3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     i0, i1, i2, i3 = _indices(Z, E, theta, phi)
 
     @vectorize
@@ -3414,9 +2912,10 @@ def _DCSP_Compt_np(Z, E, theta, phi):
     return impl
 
 
+@_overload
 def _DCSPb_Rayl(Z, E, theta, phi):
-    _check_types((Z, E, theta, phi), 1, 3)
-    xrl_fcn = _nint_ndouble("DCSPb_Rayl", 1, 3)
+    _check_types((Z, E, theta, phi), ni32=1, nf64=3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi):
@@ -3429,15 +2928,11 @@ def _DCSPb_Rayl(Z, E, theta, phi):
     return impl
 
 
-overload(xraylib.DCSPb_Rayl, jit_options=config.xrl.get("DCSPb_Rayl", {}))(_DCSPb_Rayl)
-overload(_xraylib.DCSPb_Rayl, jit_options=config.xrl.get("DCSPb_Rayl", {}))(_DCSPb_Rayl)
-
-
-@overload(xraylib_np.DCSPb_Rayl, jit_options=config.xrl_np.get("DCSPb_Rayl", {}))
+@_overload_np
 def _DCSPb_Rayl_np(Z, E, theta, phi):
-    _check_types((Z, E, theta, phi), 1, 3, _np=True)
+    _check_types((Z, E, theta, phi), ni32=1, nf64=3, _np=True)
     _check_ndim(Z, E, theta, phi)
-    xrl_fcn = _nint_ndouble("DCSPb_Rayl", 1, 3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     i0, i1, i2, i3 = _indices(Z, E, theta, phi)
 
     @vectorize
@@ -3455,9 +2950,10 @@ def _DCSPb_Rayl_np(Z, E, theta, phi):
     return impl
 
 
+@_overload
 def _DCSPb_Compt(Z, E, theta, phi):
-    _check_types((Z, E, theta, phi), 1, 3)
-    xrl_fcn = _nint_ndouble("DCSPb_Compt", 1, 3)
+    _check_types((Z, E, theta, phi), ni32=1, nf64=3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi):
@@ -3470,19 +2966,11 @@ def _DCSPb_Compt(Z, E, theta, phi):
     return impl
 
 
-overload(xraylib.DCSPb_Compt, jit_options=config.xrl.get("DCSPb_Compt", {}))(
-    _DCSPb_Compt,
-)
-overload(_xraylib.DCSPb_Compt, jit_options=config.xrl.get("DCSPb_Compt", {}))(
-    _DCSPb_Compt,
-)
-
-
-@overload(xraylib_np.DCSPb_Compt, jit_options=config.xrl_np.get("DCSPb_Compt", {}))
+@_overload_np
 def _DCSPb_Compt_np(Z, E, theta, phi):
-    _check_types((Z, E, theta, phi), 1, 3, _np=True)
+    _check_types((Z, E, theta, phi), ni32=1, nf64=3, _np=True)
     _check_ndim(Z, E, theta, phi)
-    xrl_fcn = _nint_ndouble("DCSPb_Compt", 1, 3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     i0, i1, i2, i3 = _indices(Z, E, theta, phi)
 
     @vectorize
@@ -3501,9 +2989,10 @@ def _DCSPb_Compt_np(Z, E, theta, phi):
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL2_auger_cascade_kissel(Z, E, theta, phi):
-    _check_types((Z, E, theta, phi), 1, 3)
-    xrl_fcn = _nint_ndouble("PL2_auger_cascade_kissel", 1, 3)
+    _check_types((Z, E, theta, phi), ni32=1, nf64=3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi):
@@ -3516,20 +3005,11 @@ def _PL2_auger_cascade_kissel(Z, E, theta, phi):
     return impl
 
 
-overload(
-    xraylib.PL2_auger_cascade_kissel,
-    jit_options=config.xrl.get("PL2_auger_cascade_kissel", {}),
-)(_PL2_auger_cascade_kissel)
-overload(
-    _xraylib.PL2_auger_cascade_kissel,
-    jit_options=config.xrl.get("PL2_auger_cascade_kissel", {}),
-)(_PL2_auger_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL2_full_cascade_kissel(Z, E, theta, phi):
-    _check_types((Z, E, theta, phi), 1, 3)
-    xrl_fcn = _nint_ndouble("PL2_full_cascade_kissel", 1, 3)
+    _check_types((Z, E, theta, phi), ni32=1, nf64=3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi):
@@ -3542,20 +3022,11 @@ def _PL2_full_cascade_kissel(Z, E, theta, phi):
     return impl
 
 
-overload(
-    xraylib.PL2_full_cascade_kissel,
-    jit_options=config.xrl.get("PL2_full_cascade_kissel", {}),
-)(_PL2_full_cascade_kissel)
-overload(
-    _xraylib.PL2_full_cascade_kissel,
-    jit_options=config.xrl.get("PL2_full_cascade_kissel", {}),
-)(_PL2_full_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL2_rad_cascade_kissel(Z, E, PK, PL1):
-    _check_types((Z, E, PK, PL1), 1, 3)
-    xrl_fcn = _nint_ndouble("PL2_rad_cascade_kissel", 1, 3)
+    _check_types((Z, E, PK, PL1), ni32=1, nf64=3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL1):
@@ -3568,20 +3039,11 @@ def _PL2_rad_cascade_kissel(Z, E, PK, PL1):
     return impl
 
 
-overload(
-    xraylib.PL2_rad_cascade_kissel,
-    jit_options=config.xrl.get("PL2_rad_cascade_kissel", {}),
-)(_PL2_rad_cascade_kissel)
-overload(
-    _xraylib.PL2_rad_cascade_kissel,
-    jit_options=config.xrl.get("PL2_rad_cascade_kissel", {}),
-)(_PL2_rad_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL3_pure_kissel(Z, E, PL1, PL2):
-    _check_types((Z, E, PL1, PL2), 1, 3)
-    xrl_fcn = _nint_ndouble("PL3_pure_kissel", 1, 3)
+    _check_types((Z, E, PL1, PL2), ni32=1, nf64=3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PL1, PL2):
@@ -3594,18 +3056,11 @@ def _PL3_pure_kissel(Z, E, PL1, PL2):
     return impl
 
 
-overload(xraylib.PL3_pure_kissel, jit_options=config.xrl.get("PL3_pure_kissel", {}))(
-    _PL3_pure_kissel,
-)
-overload(_xraylib.PL3_pure_kissel, jit_options=config.xrl.get("PL3_pure_kissel", {}))(
-    _PL3_pure_kissel,
-)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM3_pure_kissel(Z, E, PM1, PM2):
-    _check_types((Z, E, PM1, PM2), 1, 3)
-    xrl_fcn = _nint_ndouble("PM3_pure_kissel", 1, 3)
+    _check_types((Z, E, PM1, PM2), ni32=1, nf64=3)
+    xrl_fcn = _external_func(ni32=1, nf64=3)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PM1, PM2):
@@ -3618,21 +3073,14 @@ def _PM3_pure_kissel(Z, E, PM1, PM2):
     return impl
 
 
-overload(xraylib.PM3_pure_kissel, jit_options=config.xrl.get("PM3_pure_kissel", {}))(
-    _PM3_pure_kissel,
-)
-overload(_xraylib.PM3_pure_kissel, jit_options=config.xrl.get("PM3_pure_kissel", {}))(
-    _PM3_pure_kissel,
-)
-
-
 # ---------------------------------- 1 int, 4 double --------------------------------- #
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL3_auger_cascade_kissel(Z, E, theta, phi, PL1):
-    _check_types((Z, E, theta, phi, PL1), 1, 4)
-    xrl_fcn = _nint_ndouble("PL3_auger_cascade_kissel", 1, 4)
+    _check_types((Z, E, theta, phi, PL1), ni32=1, nf64=4)
+    xrl_fcn = _external_func(ni32=1, nf64=4)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi, PL1):
@@ -3645,20 +3093,11 @@ def _PL3_auger_cascade_kissel(Z, E, theta, phi, PL1):
     return impl
 
 
-overload(
-    xraylib.PL3_auger_cascade_kissel,
-    jit_options=config.xrl.get("PL3_auger_cascade_kissel", {}),
-)(_PL3_auger_cascade_kissel)
-overload(
-    _xraylib.PL3_auger_cascade_kissel,
-    jit_options=config.xrl.get("PL3_auger_cascade_kissel", {}),
-)(_PL3_auger_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL3_full_cascade_kissel(Z, E, theta, phi, PL1):
-    _check_types((Z, E, theta, phi, PL1), 1, 4)
-    xrl_fcn = _nint_ndouble("PL3_full_cascade_kissel", 1, 4)
+    _check_types((Z, E, theta, phi, PL1), ni32=1, nf64=4)
+    xrl_fcn = _external_func(ni32=1, nf64=4)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi, PL1):
@@ -3671,20 +3110,11 @@ def _PL3_full_cascade_kissel(Z, E, theta, phi, PL1):
     return impl
 
 
-overload(
-    xraylib.PL3_full_cascade_kissel,
-    jit_options=config.xrl.get("PL3_full_cascade_kissel", {}),
-)(_PL3_full_cascade_kissel)
-overload(
-    _xraylib.PL3_full_cascade_kissel,
-    jit_options=config.xrl.get("PL3_full_cascade_kissel", {}),
-)(_PL3_full_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PL3_rad_cascade_kissel(Z, E, PK, PL1, PL2):
-    _check_types((Z, E, PK, PL1, PL2), 1, 4)
-    xrl_fcn = _nint_ndouble("PL3_rad_cascade_kissel", 1, 4)
+    _check_types((Z, E, PK, PL1, PL2), ni32=1, nf64=4)
+    xrl_fcn = _external_func(ni32=1, nf64=4)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL1, PL2):
@@ -3697,20 +3127,11 @@ def _PL3_rad_cascade_kissel(Z, E, PK, PL1, PL2):
     return impl
 
 
-overload(
-    xraylib.PL3_rad_cascade_kissel,
-    jit_options=config.xrl.get("PL3_rad_cascade_kissel", {}),
-)(_PL3_rad_cascade_kissel)
-overload(
-    _xraylib.PL3_rad_cascade_kissel,
-    jit_options=config.xrl.get("PL3_rad_cascade_kissel", {}),
-)(_PL3_rad_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM4_pure_kissel(Z, E, theta, phi, PM1):
-    _check_types((Z, E, theta, phi, PM1), 1, 4)
-    xrl_fcn = _nint_ndouble("PM4_pure_kissel", 1, 4)
+    _check_types((Z, E, theta, phi, PM1), ni32=1, nf64=4)
+    xrl_fcn = _external_func(ni32=1, nf64=4)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi, PM1):
@@ -3723,21 +3144,14 @@ def _PM4_pure_kissel(Z, E, theta, phi, PM1):
     return impl
 
 
-overload(xraylib.PM4_pure_kissel, jit_options=config.xrl.get("PM4_pure_kissel", {}))(
-    _PM4_pure_kissel,
-)
-overload(_xraylib.PM4_pure_kissel, jit_options=config.xrl.get("PM4_pure_kissel", {}))(
-    _PM4_pure_kissel,
-)
-
-
 # ---------------------------------- 1 int, 5 double --------------------------------- #
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM1_auger_cascade_kissel(Z, E, theta, phi, PM2, PM3):
-    _check_types((Z, E, theta, phi, PM2, PM3), 1, 5)
-    xrl_fcn = _nint_ndouble("PM1_auger_cascade_kissel", 1, 5)
+    _check_types((Z, E, theta, phi, PM2, PM3), ni32=1, nf64=5)
+    xrl_fcn = _external_func(ni32=1, nf64=5)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi, PM2, PM3):
@@ -3750,20 +3164,11 @@ def _PM1_auger_cascade_kissel(Z, E, theta, phi, PM2, PM3):
     return impl
 
 
-overload(
-    xraylib.PM1_auger_cascade_kissel,
-    jit_options=config.xrl.get("PM1_auger_cascade_kissel", {}),
-)(_PM1_auger_cascade_kissel)
-overload(
-    _xraylib.PM1_auger_cascade_kissel,
-    jit_options=config.xrl.get("PM1_auger_cascade_kissel", {}),
-)(_PM1_auger_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM1_full_cascade_kissel(Z, E, theta, phi, PM2, PM3):
-    _check_types((Z, E, theta, phi, PM2, PM3), 1, 5)
-    xrl_fcn = _nint_ndouble("PM1_full_cascade_kissel", 1, 5)
+    _check_types((Z, E, theta, phi, PM2, PM3), ni32=1, nf64=5)
+    xrl_fcn = _external_func(ni32=1, nf64=5)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi, PM2, PM3):
@@ -3776,20 +3181,11 @@ def _PM1_full_cascade_kissel(Z, E, theta, phi, PM2, PM3):
     return impl
 
 
-overload(
-    xraylib.PM1_full_cascade_kissel,
-    jit_options=config.xrl.get("PM1_full_cascade_kissel", {}),
-)(_PM1_full_cascade_kissel)
-overload(
-    _xraylib.PM1_full_cascade_kissel,
-    jit_options=config.xrl.get("PM1_full_cascade_kissel", {}),
-)(_PM1_full_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM1_rad_cascade_kissel(Z, E, PK, PL, PL2, PL3):
-    _check_types((Z, E, PK, PL, PL2, PL3), 1, 5)
-    xrl_fcn = _nint_ndouble("PM1_rad_cascade_kissel", 1, 5)
+    _check_types((Z, E, PK, PL, PL2, PL3), ni32=1, nf64=5)
+    xrl_fcn = _external_func(ni32=1, nf64=5)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL, PL2, PL3):
@@ -3802,20 +3198,11 @@ def _PM1_rad_cascade_kissel(Z, E, PK, PL, PL2, PL3):
     return impl
 
 
-overload(
-    xraylib.PM1_rad_cascade_kissel,
-    jit_options=config.xrl.get("PM1_rad_cascade_kissel", {}),
-)(_PM1_rad_cascade_kissel)
-overload(
-    _xraylib.PM1_rad_cascade_kissel,
-    jit_options=config.xrl.get("PM1_rad_cascade_kissel", {}),
-)(_PM1_rad_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM5_pure_kissel(Z, E, theta, phi, PM1, PM2):
-    _check_types((Z, E, theta, phi, PM1, PM2), 1, 5)
-    xrl_fcn = _nint_ndouble("PM5_pure_kissel", 1, 5)
+    _check_types((Z, E, theta, phi, PM1, PM2), ni32=1, nf64=5)
+    xrl_fcn = _external_func(ni32=1, nf64=5)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi, PM1, PM2):
@@ -3828,21 +3215,14 @@ def _PM5_pure_kissel(Z, E, theta, phi, PM1, PM2):
     return impl
 
 
-overload(xraylib.PM5_pure_kissel, jit_options=config.xrl.get("PM5_pure_kissel", {}))(
-    _PM5_pure_kissel,
-)
-overload(_xraylib.PM5_pure_kissel, jit_options=config.xrl.get("PM5_pure_kissel", {}))(
-    _PM5_pure_kissel,
-)
-
-
 # ---------------------------------- 1 int, 6 double --------------------------------- #
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM2_auger_cascade_kissel(Z, E, theta, phi, PM3, PM4, PM5):
-    _check_types((Z, E, theta, phi, PM3, PM4, PM5), 1, 6)
-    xrl_fcn = _nint_ndouble("PM2_auger_cascade_kissel", 1, 6)
+    _check_types((Z, E, theta, phi, PM3, PM4, PM5), ni32=1, nf64=6)
+    xrl_fcn = _external_func(ni32=1, nf64=6)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi, PM3, PM4, PM5):
@@ -3855,20 +3235,11 @@ def _PM2_auger_cascade_kissel(Z, E, theta, phi, PM3, PM4, PM5):
     return impl
 
 
-overload(
-    xraylib.PM2_auger_cascade_kissel,
-    jit_options=config.xrl.get("PM2_auger_cascade_kissel", {}),
-)(_PM2_auger_cascade_kissel)
-overload(
-    _xraylib.PM2_auger_cascade_kissel,
-    jit_options=config.xrl.get("PM2_auger_cascade_kissel", {}),
-)(_PM2_auger_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM2_full_cascade_kissel(Z, E, theta, phi, PM3, PM4, PM5):
-    _check_types((Z, E, theta, phi, PM3, PM4, PM5), 1, 6)
-    xrl_fcn = _nint_ndouble("PM2_full_cascade_kissel", 1, 6)
+    _check_types((Z, E, theta, phi, PM3, PM4, PM5), ni32=1, nf64=6)
+    xrl_fcn = _external_func(ni32=1, nf64=6)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, theta, phi, PM3, PM4, PM5):
@@ -3881,20 +3252,11 @@ def _PM2_full_cascade_kissel(Z, E, theta, phi, PM3, PM4, PM5):
     return impl
 
 
-overload(
-    xraylib.PM2_full_cascade_kissel,
-    jit_options=config.xrl.get("PM2_full_cascade_kissel", {}),
-)(_PM2_full_cascade_kissel)
-overload(
-    _xraylib.PM2_full_cascade_kissel,
-    jit_options=config.xrl.get("PM2_full_cascade_kissel", {}),
-)(_PM2_full_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM2_rad_cascade_kissel(Z, E, PK, PL, PL2, PL3, PL4):
-    _check_types((Z, E, PK, PL, PL2, PL3, PL4), 1, 6)
-    xrl_fcn = _nint_ndouble("PM2_rad_cascade_kissel", 1, 6)
+    _check_types((Z, E, PK, PL, PL2, PL3, PL4), ni32=1, nf64=6)
+    xrl_fcn = _external_func(ni32=1, nf64=6)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL, PL2, PL3, PL4):
@@ -3907,23 +3269,14 @@ def _PM2_rad_cascade_kissel(Z, E, PK, PL, PL2, PL3, PL4):
     return impl
 
 
-overload(
-    xraylib.PM2_rad_cascade_kissel,
-    jit_options=config.xrl.get("PM2_rad_cascade_kissel", {}),
-)(_PM2_rad_cascade_kissel)
-overload(
-    _xraylib.PM2_rad_cascade_kissel,
-    jit_options=config.xrl.get("PM2_rad_cascade_kissel", {}),
-)(_PM2_rad_cascade_kissel)
-
-
 # ---------------------------------- 1 int, 7 double --------------------------------- #
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM3_auger_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2):
-    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2), 1, 7)
-    xrl_fcn = _nint_ndouble("PM3_auger_cascade_kissel", 1, 7)
+    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2), ni32=1, nf64=7)
+    xrl_fcn = _external_func(ni32=1, nf64=7)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL1, PL2, PL3, PM1, PM2):
@@ -3936,20 +3289,11 @@ def _PM3_auger_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2):
     return impl
 
 
-overload(
-    xraylib.PM3_auger_cascade_kissel,
-    jit_options=config.xrl.get("PM3_auger_cascade_kissel", {}),
-)(_PM3_auger_cascade_kissel)
-overload(
-    _xraylib.PM3_auger_cascade_kissel,
-    jit_options=config.xrl.get("PM3_auger_cascade_kissel", {}),
-)(_PM3_auger_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM3_full_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2):
-    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2), 1, 7)
-    xrl_fcn = _nint_ndouble("PM3_full_cascade_kissel", 1, 7)
+    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2), ni32=1, nf64=7)
+    xrl_fcn = _external_func(ni32=1, nf64=7)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL1, PL2, PL3, PM1, PM2):
@@ -3960,22 +3304,13 @@ def _PM3_full_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2):
         return result
 
     return impl
-
-
-overload(
-    xraylib.PM3_full_cascade_kissel,
-    jit_options=config.xrl.get("PM3_full_cascade_kissel", {}),
-)(_PM3_full_cascade_kissel)
-overload(
-    _xraylib.PM3_full_cascade_kissel,
-    jit_options=config.xrl.get("PM3_full_cascade_kissel", {}),
-)(_PM3_full_cascade_kissel)
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM3_rad_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2):
-    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2), 1, 7)
-    xrl_fcn = _nint_ndouble("PM3_rad_cascade_kissel", 1, 7)
+    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2), ni32=1, nf64=7)
+    xrl_fcn = _external_func(ni32=1, nf64=7)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL1, PL2, PL3, PM1, PM2):
@@ -3986,25 +3321,16 @@ def _PM3_rad_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2):
         return result
 
     return impl
-
-
-overload(
-    xraylib.PM3_rad_cascade_kissel,
-    jit_options=config.xrl.get("PM3_rad_cascade_kissel", {}),
-)(_PM3_rad_cascade_kissel)
-overload(
-    _xraylib.PM3_rad_cascade_kissel,
-    jit_options=config.xrl.get("PM3_rad_cascade_kissel", {}),
-)(_PM3_rad_cascade_kissel)
 
 
 # ---------------------------------- 1 int, 8 double --------------------------------- #
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM4_auger_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3):
-    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3), 1, 8)
-    xrl_fcn = _nint_ndouble("PM4_auger_cascade_kissel", 1, 8)
+    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3), ni32=1, nf64=8)
+    xrl_fcn = _external_func(ni32=1, nf64=8)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3):
@@ -4017,20 +3343,11 @@ def _PM4_auger_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3):
     return impl
 
 
-overload(
-    xraylib.PM4_auger_cascade_kissel,
-    jit_options=config.xrl.get("PM4_auger_cascade_kissel", {}),
-)(_PM4_auger_cascade_kissel)
-overload(
-    _xraylib.PM4_auger_cascade_kissel,
-    jit_options=config.xrl.get("PM4_auger_cascade_kissel", {}),
-)(_PM4_auger_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM4_full_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3):
-    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3), 1, 8)
-    xrl_fcn = _nint_ndouble("PM4_full_cascade_kissel", 1, 8)
+    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3), ni32=1, nf64=8)
+    xrl_fcn = _external_func(ni32=1, nf64=8)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3):
@@ -4041,22 +3358,13 @@ def _PM4_full_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3):
         return result
 
     return impl
-
-
-overload(
-    xraylib.PM4_full_cascade_kissel,
-    jit_options=config.xrl.get("PM4_full_cascade_kissel", {}),
-)(_PM4_full_cascade_kissel)
-overload(
-    _xraylib.PM4_full_cascade_kissel,
-    jit_options=config.xrl.get("PM4_full_cascade_kissel", {}),
-)(_PM4_full_cascade_kissel)
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM4_rad_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3):
-    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3), 1, 8)
-    xrl_fcn = _nint_ndouble("PM4_rad_cascade_kissel", 1, 8)
+    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3), ni32=1, nf64=8)
+    xrl_fcn = _external_func(ni32=1, nf64=8)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3):
@@ -4067,25 +3375,16 @@ def _PM4_rad_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3):
         return result
 
     return impl
-
-
-overload(
-    xraylib.PM4_rad_cascade_kissel,
-    jit_options=config.xrl.get("PM4_rad_cascade_kissel", {}),
-)(_PM4_rad_cascade_kissel)
-overload(
-    _xraylib.PM4_rad_cascade_kissel,
-    jit_options=config.xrl.get("PM4_rad_cascade_kissel", {}),
-)(_PM4_rad_cascade_kissel)
 
 
 # ---------------------------------- 1 int, 9 double --------------------------------- #
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM5_auger_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4):
-    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4), 1, 9)
-    xrl_fcn = _nint_ndouble("PM5_auger_cascade_kissel", 1, 9)
+    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4), ni32=1, nf64=9)
+    xrl_fcn = _external_func(ni32=1, nf64=9)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4):
@@ -4098,20 +3397,11 @@ def _PM5_auger_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4):
     return impl
 
 
-overload(
-    xraylib.PM5_auger_cascade_kissel,
-    jit_options=config.xrl.get("PM5_auger_cascade_kissel", {}),
-)(_PM5_auger_cascade_kissel)
-overload(
-    _xraylib.PM5_auger_cascade_kissel,
-    jit_options=config.xrl.get("PM5_auger_cascade_kissel", {}),
-)(_PM5_auger_cascade_kissel)
-
-
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM5_full_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4):
-    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4), 1, 9)
-    xrl_fcn = _nint_ndouble("PM5_full_cascade_kissel", 1, 9)
+    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4), ni32=1, nf64=9)
+    xrl_fcn = _external_func(ni32=1, nf64=9)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4):
@@ -4122,22 +3412,13 @@ def _PM5_full_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4):
         return result
 
     return impl
-
-
-overload(
-    xraylib.PM5_full_cascade_kissel,
-    jit_options=config.xrl.get("PM5_full_cascade_kissel", {}),
-)(_PM5_full_cascade_kissel)
-overload(
-    _xraylib.PM5_full_cascade_kissel,
-    jit_options=config.xrl.get("PM5_full_cascade_kissel", {}),
-)(_PM5_full_cascade_kissel)
 
 
 # !!! Not implemented in xraylib_np
+@_overload
 def _PM5_rad_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4):
-    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4), 1, 9)
-    xrl_fcn = _nint_ndouble("PM5_rad_cascade_kissel", 1, 9)
+    _check_types((Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4), ni32=1, nf64=9)
+    xrl_fcn = _external_func(ni32=1, nf64=9)
     msg = f"{Z_OUT_OF_RANGE} | {NEGATIVE_ENERGY}"
 
     def impl(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4):
@@ -4148,24 +3429,15 @@ def _PM5_rad_cascade_kissel(Z, E, PK, PL1, PL2, PL3, PM1, PM2, PM3, PM4):
         return result
 
     return impl
-
-
-overload(
-    xraylib.PM5_rad_cascade_kissel,
-    jit_options=config.xrl.get("PM5_rad_cascade_kissel", {}),
-)(_PM5_rad_cascade_kissel)
-overload(
-    _xraylib.PM5_rad_cascade_kissel,
-    jit_options=config.xrl.get("PM5_rad_cascade_kissel", {}),
-)(_PM5_rad_cascade_kissel)
 
 
 # ------------------------------------- 3 double ------------------------------------- #
 
 
+@_overload
 def _DCSP_KN(E, theta, phi):
-    _check_types((E, theta, phi), 0, 3)
-    xrl_fcn = _nint_ndouble("DCSP_KN", 0, 3)
+    _check_types((E, theta, phi), nf64=3)
+    xrl_fcn = _external_func(nf64=3)
     msg = f"{NEGATIVE_ENERGY}"
 
     def impl(E, theta, phi):
@@ -4178,15 +3450,11 @@ def _DCSP_KN(E, theta, phi):
     return impl
 
 
-overload(xraylib.DCSP_KN, jit_options=config.xrl.get("DCSP_KN", {}))(_DCSP_KN)
-overload(_xraylib.DCSP_KN, jit_options=config.xrl.get("DCSP_KN", {}))(_DCSP_KN)
-
-
-@overload(xraylib_np.DCSP_KN, jit_options=config.xrl_np.get("DCSP_KN", {}))
+@_overload_np
 def _DCSP_KN_np(E, theta, phi):
-    _check_types((E, theta, phi), 0, 3, _np=True)
+    _check_types((E, theta, phi), nf64=3, _np=True)
     _check_ndim(E, theta, phi)
-    xrl_fcn = _nint_ndouble("DCSP_KN", 0, 3)
+    xrl_fcn = _external_func(nf64=3)
     i0, i1, i2 = _indices(E, theta, phi)
 
     @vectorize
@@ -4207,37 +3475,428 @@ def _DCSP_KN_np(E, theta, phi):
 
 # ??? How to pass a python string to an external function
 
-# TODO(nin17): CS_Total_CP
-# TODO(nin17): CS_Photo_CP
-# TODO(nin17): CS_Rayl_CP
-# TODO(nin17): CS_Compt_CP
-# TODO(nin17): CS_Energy_CP
-# TODO(nin17): CS_Photo_Total_CP
-# TODO(nin17): CS_Total_Kissel_CP
-# TODO(nin17): CSb_Total_CP
-# TODO(nin17): CSb_Photo_CP
-# TODO(nin17): CSb_Rayl_CP
-# TODO(nin17): CSb_Compt_CP
-# TODO(nin17): CSb_Energy_CP
-# TODO(nin17): CSb_Photo_Total_CP
-# TODO(nin17): CSb_Total_Kissel_CP
+
+@_overload
+def _CS_Total_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""  # TODO: Error message
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _CS_Photo_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""  # TODO: Error message
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _CS_Rayl_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _CS_Compt_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+# #@_overload
+# def _CS_Energy_CP(compound, E):
+#     _check_types((compound, E), nstr=1, nf64=1)
+#     xrl_fcn = _external_func(nstr=1, nf64=1)
+
+#     msg = ""
+
+#     def impl(compound, E):
+#         c = _convert_str(compound)
+#         error = array([0, 0], dtype=int32)
+#         result = xrl_fcn(c.ctypes, E, error.ctypes)
+#         if error.any():
+#             raise ValueError(msg)
+#         return result
+
+#     return impl
+
+
+@_overload
+def _CS_Photo_Total_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _CS_Total_Kissel_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _CSb_Total_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _CSb_Photo_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _CSb_Rayl_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _CSb_Compt_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _CSb_Photo_Total_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _CSb_Total_Kissel_CP(compound, E):
+    _check_types((compound, E), nstr=1, nf64=1)
+    xrl_fcn = _external_func(nstr=1, nf64=1)
+
+    msg = ""
+
+    def impl(compound, E):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
 
 
 # -------------------------------- 1 string, 2 double -------------------------------- #
 
-# TODO(nin17): DCS_Rayl_CP
-# TODO(nin17): DCS_Compt_CP
-# TODO(nin17): DCSb_Rayl_CP
-# TODO(nin17): DCSb_Compt_CP
-# TODO(nin17): Refractive_Index_Re
-# TODO(nin17): Refractive_Index_Im
+
+@_overload
+def _DCS_Rayl_CP(compound, E, theta):
+    _check_types((compound, E, theta), nstr=1, nf64=2)
+    xrl_fcn = _external_func(nstr=1, nf64=2)
+
+    msg = ""
+
+    def impl(compound, E, theta):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, theta, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _DCS_Compt_CP(compound, E, theta):
+    _check_types((compound, E, theta), nstr=1, nf64=2)
+    xrl_fcn = _external_func(nstr=1, nf64=2)
+
+    msg = ""
+
+    def impl(compound, E, theta):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, theta, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _DCSb_Rayl_CP(compound, E, theta):
+    _check_types((compound, E, theta), nstr=1, nf64=2)
+    xrl_fcn = _external_func(nstr=1, nf64=2)
+
+    msg = ""
+
+    def impl(compound, E, theta):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, theta, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _DCSb_Compt_CP(compound, E, theta):
+    _check_types((compound, E, theta), nstr=1, nf64=2)
+    xrl_fcn = _external_func(nstr=1, nf64=2)
+
+    msg = ""
+
+    def impl(compound, E, theta):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, theta, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _Refractive_Index_Re(compound, E, density):
+    _check_types((compound, E, density), nstr=1, nf64=2)
+    xrl_fcn = _external_func(nstr=1, nf64=2)
+
+    msg = ""
+
+    def impl(compound, E, density):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, density, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _Refractive_Index_Im(compound, E, density):
+    _check_types((compound, E, density), nstr=1, nf64=2)
+    xrl_fcn = _external_func(nstr=1, nf64=2)
+
+    msg = ""
+
+    def impl(compound, E, density):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, density, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
 # TODO(nin17): Refractive_Index
+# TODO(nin17): complex return values
 
 # -------------------------------- 1 string, 3 double -------------------------------- #
 
-# TODO(nin17): DCSP_Rayl_CP
-# TODO(nin17): DCSP_Compt_CP
-# TODO(nin17): DCSPb_Rayl_CP
-# TODO(nin17): DCSPb_Compt_CP
+
+@_overload
+def _DCSP_Rayl_CP(compound, E, theta, phi):
+    _check_types((compound, E, theta, phi), nstr=1, nf64=3)
+    xrl_fcn = _external_func(nstr=1, nf64=3)
+
+    msg = ""
+
+    def impl(compound, E, theta, phi):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, theta, phi, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _DCSP_Compt_CP(compound, E, theta, phi):
+    _check_types((compound, E, theta, phi), nstr=1, nf64=3)
+    xrl_fcn = _external_func(nstr=1, nf64=3)
+
+    msg = ""
+
+    def impl(compound, E, theta, phi):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, theta, phi, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _DCSPb_Rayl_CP(compound, E, theta, phi):
+    _check_types((compound, E, theta, phi), nstr=1, nf64=3)
+    xrl_fcn = _external_func(nstr=1, nf64=3)
+
+    msg = ""
+
+    def impl(compound, E, theta, phi):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, theta, phi, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
+
+@_overload
+def _DCSPb_Compt_CP(compound, E, theta, phi):
+    _check_types((compound, E, theta, phi), nstr=1, nf64=3)
+    xrl_fcn = _external_func(nstr=1, nf64=3)
+
+    msg = ""
+
+    def impl(compound, E, theta, phi):
+        c = _convert_str(compound)
+        error = array([0, 0], dtype=int32)
+        result = xrl_fcn(c.ctypes, E, theta, phi, error.ctypes)
+        if error.any():
+            raise ValueError(msg)
+        return result
+
+    return impl
+
 
 # TODO(nin17): Other functions with string returns etc...

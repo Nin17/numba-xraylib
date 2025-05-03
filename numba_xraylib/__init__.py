@@ -6,7 +6,7 @@ from .config import config
 
 
 def _init() -> None:
-    from . import xraylib_overloads  # noqa: F401
+    from . import xraylib_overloads_new  # noqa: F401
 
 
 __all__ = ["config", "xraylib_overloads"]

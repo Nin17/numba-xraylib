@@ -18,6 +18,7 @@ from numpy.testing import assert_equal
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+# TODO(nin17): remove
 # ruff: noqa: D101, N801, S311
 
 
@@ -61,7 +62,7 @@ class BaseTest:
             The xraylib function wrapped in numba.njit.
 
         """
-        _func = getattr(xraylib, self.func)
+        _func = nb.extending.register_jitable(getattr(xraylib, self.func))
 
         def func(*args: float) -> float:
             return _func(*args)
@@ -108,14 +109,21 @@ class XraylibTest(BaseTest):
             "PM2": (0.0, 1.0),
             "PM3": (0.0, 1.0),
             "PM4": (0.0, 1.0),
+            "density": (0.0, 10000.0),
+        }
+        s_args = {
+            "symbol": "H",
+            "compound": "H2S(O4)",
         }
         if arg in i_args:
             return random.randint(*i_args[arg])
         if arg in f_args:
             return (random.random() - f_args[arg][0]) * f_args[arg][1]
+        if arg in s_args:
+            return s_args[arg]
 
         msg = f"Invalid argument: {arg}"
-        raise ValueError(msg)
+        raise KeyError(msg)
 
     @functools.cached_property
     def args(self: XraylibTest) -> tuple[int | float, ...]:
@@ -131,14 +139,17 @@ class XraylibTest(BaseTest):
 
     def test_xrl(self: XraylibTest) -> None:
         """Test njit function against xraylib return and possible error."""
+        xrl_numba_result = None
+        xrl_result = None
         try:
             xrl_result = self.xrl_func(*self.args)
-        except ValueError:
-            xrl_result = 0.0
+            xrl_numba_result = self.xrl_numba_func(*self.args)
+        except ValueError as e:
             with pytest.raises(ValueError):  # noqa: PT011
                 self.xrl_numba_func(*self.args)
-            return
-        assert_equal(xrl_result, self.xrl_numba_func(*self.args))
+
+        assert_equal(xrl_result, xrl_numba_result)
+        
 
     def test_bare_compile(self: XraylibTest) -> None:
         """Test function with numba.njit without wrapper function."""
@@ -250,7 +261,7 @@ class XraylibNpTest(BaseTest):
 
     def test_nd(self: XraylibNpTest) -> None:
         """Test with N-dimensional arrays."""
-        from xraylib_numba import config
+        from numba_xraylib import config
 
         rng = default_rng(seed=random.randint(0, 2**32 - 1))
 
@@ -587,3 +598,75 @@ class TestDCSP_KN(XraylibTest, XraylibNpTest): ...
 
 
 # TODO(nin17): tests for functions with string arguments when implemented
+
+
+class TestCS_Total_CP(XraylibTest): ...
+
+
+class TestCS_Photo_CP(XraylibTest): ...
+
+
+class TestCS_Rayl_CP(XraylibTest): ...
+
+
+class TestCS_Compt_CP(XraylibTest): ...
+
+
+class TestCS_Energy_CP(XraylibTest): ...
+
+
+class TestCS_Photo_Total_CP(XraylibTest): ...
+
+
+class TestCS_Total_Kissel_CP(XraylibTest): ...
+
+
+class TestCSb_Total_CP(XraylibTest): ...
+
+
+class TestCSb_Photo_CP(XraylibTest): ...
+
+
+class TestCSb_Rayl_CP(XraylibTest): ...
+
+
+class TestCSb_Compt_CP(XraylibTest): ...
+
+
+class TestCSb_Photo_Total_CP(XraylibTest): ...
+
+
+class TestCSb_Total_Kissel_CP(XraylibTest): ...
+
+
+class TestDCS_Compt_CP(XraylibTest): ...
+
+
+class TestDCS_Rayl_CP(XraylibTest): ...
+
+
+class TestDCSb_Compt_CP(XraylibTest): ...
+
+
+class TestDCSb_Rayl_CP(XraylibTest): ...
+
+
+class TestRefractive_Index_Re(XraylibTest): ...
+
+
+class TestRefractive_Index_Im(XraylibTest): ...
+
+
+class TestRefractive_Index(XraylibTest): ...
+
+
+class TestDCSP_Rayl_CP(XraylibTest): ...
+
+
+class TestDCSP_Compt_CP(XraylibTest): ...
+
+
+class TestDCSPb_Rayl_CP(XraylibTest): ...
+
+
+class TestDCSPb_Compt_CP(XraylibTest): ...
