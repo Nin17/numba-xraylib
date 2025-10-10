@@ -19,7 +19,7 @@ with (Path(__file__).parent / "config.toml").open("rb") as f:
 class Config:
     """Configuration for jit options."""
 
-    __slots__ = ["xrl", "xrl_np", "allow_nd"]
+    __slots__ = ("allow_nd", "xrl", "xrl_np")
 
     def __init__(  # noqa: D107
         self: Config,
