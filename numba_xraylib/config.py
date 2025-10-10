@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+__all__ = ("config",)
+
 import sys
 from typing import Any
 
@@ -21,7 +23,7 @@ class Config:
 
     __slots__ = ("allow_nd", "xrl", "xrl_np")
 
-    def __init__(  # noqa: D107
+    def __init__(
         self: Config,
         **toml_config: dict[str, dict[str, Any]],
     ) -> None:
