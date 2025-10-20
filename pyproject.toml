@@ -56,7 +56,7 @@ exclude = ["subprojects",]
 select = ['ALL']
 ignore = ['N802', 'N803', 'N806', 'PLR0913', 'TD003']
 
-[tool.ruff.extend-per-file-ignores]
+[tool.ruff.lint.extend-per-file-ignores]
 'numba_xraylib/__init__.py' = ['F401', 'PLC0415' ]
 'numba_xraylib/overload_xraylib.py' = ['ANN001', 'ANN202']
 'numba_xraylib/overload_xraylib_np.py' = ['ANN001', 'ANN202']
