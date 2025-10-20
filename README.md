@@ -6,9 +6,15 @@ Use [xraylib](https://github.com/tschoonj/xraylib/tree/master) in [numba](https:
 
 ## Installation
 
-```text
-pip install xraylib_numba
+Clone the repository and submodules (with `--recurse-submodules`)
+then install with:
+```shell
+pip install .
 ```
+Will be uploaded to PyPi shortly.
+<!-- ```text
+pip install xraylib_numba
+``` -->
 
 ## Usage
 
@@ -19,8 +25,6 @@ import xraylib
 import xraylib_np
 from numba import njit
 import numpy as np
-
-# %pip install xraylib_numba
 
 @njit
 def AtomicWeight(Z):
