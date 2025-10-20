@@ -1,7 +1,7 @@
 # numba-xraylib
 
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-![PyPI - Version](https://img.shields.io/pypi/v/numba-xraylib?style=for-the-badge&color=%23785EF0)
+![PyPI - Version](https://img.shields.io/pypi/v/numba-xraylib?color=%23785EF0)
 
 
 Use [xraylib](https://github.com/tschoonj/xraylib/tree/master) in [numba](https://numba.pydata.org) nopython functions.
