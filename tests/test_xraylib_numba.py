@@ -15,12 +15,12 @@ from numpy import asarray, broadcast_to, float64, int_, pi
 from numpy.random import default_rng
 from numpy.testing import assert_equal
 
+from numba_xraylib import config
+
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from numpy.typing import NDArray
-
-# TODO(nin17): remove
-# ruff: noqa: D101, N801, S311
-
 
 N = 10
 
@@ -41,7 +41,7 @@ class BaseTest:
         return self.__class__.__name__.removeprefix("Test")
 
     @functools.cached_property
-    def xrl_func(self: BaseTest) -> callable:
+    def xrl_func(self: BaseTest) -> Callable:
         """Xraylib function.
 
         Returns
@@ -53,7 +53,7 @@ class BaseTest:
         return getattr(xraylib, self.func)
 
     @functools.cached_property
-    def xrl_numba_func(self: BaseTest) -> callable:
+    def xrl_numba_func(self: BaseTest) -> Callable:
         """Xraylib function wrapped in numba.njit.
 
         Returns
@@ -62,7 +62,7 @@ class BaseTest:
             The xraylib function wrapped in numba.njit.
 
         """
-        _func = nb.extending.register_jitable(getattr(xraylib, self.func))
+        _func = getattr(xraylib, self.func)
 
         def func(*args: float) -> float:
             return _func(*args)
@@ -86,7 +86,7 @@ class XraylibTest(BaseTest):
     """Base class for testing xraylib functions."""
 
     @staticmethod
-    def _args(arg: str) -> int | float:
+    def _args(arg: str) -> int | float | str:
         i_args = {
             "Z": (0, 119),
             "shell": (1, 30),
@@ -126,7 +126,7 @@ class XraylibTest(BaseTest):
         raise KeyError(msg)
 
     @functools.cached_property
-    def args(self: XraylibTest) -> tuple[int | float, ...]:
+    def args(self: XraylibTest) -> tuple[int | float | str, ...]:
         """Arguments for the xraylib function.
 
         Returns
@@ -144,12 +144,11 @@ class XraylibTest(BaseTest):
         try:
             xrl_result = self.xrl_func(*self.args)
             xrl_numba_result = self.xrl_numba_func(*self.args)
-        except ValueError as e:
+        except ValueError:
             with pytest.raises(ValueError):  # noqa: PT011
                 self.xrl_numba_func(*self.args)
 
         assert_equal(xrl_result, xrl_numba_result)
-        
 
     def test_bare_compile(self: XraylibTest) -> None:
         """Test function with numba.njit without wrapper function."""
@@ -207,7 +206,7 @@ class XraylibNpTest(BaseTest):
         return tuple(self._args_np(arg) for arg in self.xrl_sig.parameters)
 
     @functools.cached_property
-    def xrl_np_func(self: XraylibNpTest) -> callable:
+    def xrl_np_func(self: XraylibNpTest) -> Callable:
         """Xraylib_np function.
 
         Returns
@@ -219,7 +218,7 @@ class XraylibNpTest(BaseTest):
         return getattr(xraylib_np, self.func)
 
     @functools.cached_property
-    def xrl_np_numba_func(self: XraylibNpTest) -> callable:
+    def xrl_np_numba_func(self: XraylibNpTest) -> Callable:
         """Xraylib_np function wrapped in numba.njit.
 
         Returns
@@ -261,8 +260,6 @@ class XraylibNpTest(BaseTest):
 
     def test_nd(self: XraylibNpTest) -> None:
         """Test with N-dimensional arrays."""
-        from numba_xraylib import config
-
         rng = default_rng(seed=random.randint(0, 2**32 - 1))
 
         config.allow_nd = True
@@ -275,7 +272,7 @@ class XraylibNpTest(BaseTest):
 
         args_np = [
             broadcast_to(asarray(i[:1]).reshape(*[1] * ndim), shape)
-            for i, ndim, shape in zip(self.args_np, ndims, shapes)
+            for i, ndim, shape in zip(self.args_np, ndims, shapes, strict=False)
         ]
 
         xrl_np_result = self.xrl_np_numba_func(*args_np)
@@ -283,6 +280,8 @@ class XraylibNpTest(BaseTest):
         assert xrl_np_result.shape == sum(shapes, ())  # noqa: S101
 
         assert_equal(xrl_result.item(), xrl_np_result)
+
+        config.allow_nd = False
 
 
 class TestAtomicWeight(XraylibTest, XraylibNpTest): ...
@@ -597,9 +596,6 @@ class TestPM5_rad_cascade_kissel(XraylibTest): ...
 class TestDCSP_KN(XraylibTest, XraylibNpTest): ...
 
 
-# TODO(nin17): tests for functions with string arguments when implemented
-
-
 class TestCS_Total_CP(XraylibTest): ...
 
 
@@ -657,6 +653,7 @@ class TestRefractive_Index_Re(XraylibTest): ...
 class TestRefractive_Index_Im(XraylibTest): ...
 
 
+@pytest.mark.xfail(reason="xrlComplex not implemented")
 class TestRefractive_Index(XraylibTest): ...
 
 
