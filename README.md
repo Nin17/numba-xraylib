@@ -3,6 +3,7 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 ![PyPI - Version](https://img.shields.io/pypi/v/numba-xraylib?color=%23785EF0)
 ![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FNin17%2Fnumba-xraylib%2Frefs%2Fheads%2Fmain%2Fpyproject.toml&color=%23785EF0)
+![GitHub License](https://img.shields.io/github/license/Nin17/numba-xraylib?color=%23785EF0)
 
 
 
