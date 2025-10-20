@@ -1,7 +1,9 @@
 """Utility functions for numba-xraylib."""
 
 import inspect
+import warnings
 from collections.abc import Callable, Sequence
+from ctypes.util import find_library
 from itertools import chain, repeat
 from pathlib import Path
 from types import EllipsisType
@@ -43,7 +45,12 @@ def get_extension_path(lib_name: str) -> str | None:
 
 
 def _init() -> None:
-    load_library_permanently(get_extension_path("libxrl"))
+    _path = get_extension_path("libxrl")
+    if _path is None:
+        msg = "Could not find libxrl library bundled with numba_xraylib"
+        warnings.warn(msg, stacklevel=2)
+        _path = find_library("xrl")
+    load_library_permanently(_path)
     from . import overload_xraylib, overload_xraylib_np  # noqa: PLC0415 F401
 
 
