@@ -50,6 +50,7 @@ NUMBA_CAPTURED_ERRORS='new_style'
 
 [tool.ruff]
 line-length = 88
+exclude = ["subprojects",]
 
 [tool.ruff.lint]
 select = ['ALL']
