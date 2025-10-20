@@ -34,7 +34,7 @@ def get_extension_path(lib_name: str) -> str | None:
 
     """
     search_path = Path(__file__).parent.parent
-    ext_path = f"{lib_name}.*"
+    ext_path = f"{lib_name}*.*"
     matches = filter(lambda x: not x.name.endswith(".pc"), search_path.rglob(ext_path))
     try:
         return str(next(matches))
