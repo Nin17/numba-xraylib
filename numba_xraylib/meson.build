@@ -8,16 +8,6 @@ python_sources = [
   'utils.py',
 ]
 
-xraylib_proj = subproject('xraylib',
-    default_options: [
-        'default_library=shared',
-        'python-bindings=disabled',
-        'python-numpy-bindings=disabled',
-        'fortran-bindings=disabled',
-    ],
-    required: false,
-)
-
 py3.install_sources(
   python_sources,
   pure: false,
