@@ -1,6 +1,6 @@
 **__pycache__
 **.pytest_cache
-**xraylib_numba.egg-info
+**numba_xraylib.egg-info
 **build
 !**meson.build
 *.log
@@ -15,3 +15,4 @@
 *.tar.gz
 *.xrl
 .coverage
+.token

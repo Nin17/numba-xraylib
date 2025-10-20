@@ -1,4 +1,4 @@
-"""Tests for xraylib_numba against xraylib and xraylib_np."""
+"""Tests for numba-xraylib against xraylib and xraylib_np."""
 
 from __future__ import annotations
 

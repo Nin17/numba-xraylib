@@ -1,4 +1,4 @@
-"""Configure jit options for xraylib_numba."""
+"""Configure jit options for numba-xraylib."""
 
 from __future__ import annotations
 
