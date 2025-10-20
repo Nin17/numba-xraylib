@@ -10,8 +10,9 @@ authors = [{name = 'Chris Ninham', email = 'christopher.ninham@alumni-insa-lyon.
 dependencies = ['numba>=0.57', 'numpy', 'tomli; python_version < "3.11"']
 description = 'A numba compatible wrapper of the xraylib library.'
 name = 'numba-xraylib'
-version = '0.2.0'
+version = '0.2.5'
 requires-python = '>=3.10'
+readme = "README.md"
 
 [project.urls]
 'Homepage' = 'https://github.com/Nin17/numba-xraylib'
@@ -62,3 +63,9 @@ ignore = ['N802', 'N803', 'N806', 'PLR0913', 'TD003']
 'numba_xraylib/overload_xraylib_np.py' = ['ANN001', 'ANN202']
 
 'tests/*' = ['D101', 'N801', 'S311']
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
