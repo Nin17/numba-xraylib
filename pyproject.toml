@@ -1,27 +1,47 @@
 [build-system]
-requires = ["flit_core >=3.2,<4"]
-build-backend = "flit_core.buildapi"
+build-backend = 'mesonpy'
+requires = ['meson-python']
 
 [project]
-authors = [{name = "Chris Ninham", email = "christopher.ninham@insa-lyon.fr"},]
-dependencies = ['numba>=0.57', 'numpy<2.0', 'tomli; python_version < "3.11"']
-description = "A numba compatible wrapper of the xraylib library."
-name = "numba-xraylib"
-version = "0.1.0"
-requires-python = ">=3.8"
+authors = [{name = 'Chris Ninham', email = 'christopher.ninham@alumni-insa-lyon.org'},]
+dependencies = ['numba>=0.57', 'numpy', 'tomli; python_version < "3.11"']
+description = 'A numba compatible wrapper of the xraylib library.'
+name = 'numba-xraylib'
+version = '0.2.0'
+requires-python = '>=3.10'
 
 [project.urls]
-"Homepage" = "https://github.com/Nin17/numba-xraylib"
-"Bug Tracker" = "https://github.com/Nin17/numba-xraylib/issues"
+'Homepage' = 'https://github.com/Nin17/numba-xraylib'
+'Bug Tracker' = 'https://github.com/Nin17/numba-xraylib/issues'
 
 [project.optional-dependencies]
-dev = ['ruff', 'pytest', 'pytest-env', 'pytest-randomly']
+dev = ['ruff', 'pytest', 'pytest-cov', 'pytest-env', 'pytest-randomly']
 
 [project.entry-points.numba_extensions]
-init = "numba_xraylib:_init"
+init = 'numba_xraylib:_init'
 
-[tool.flit.external-data]
-directory = "numba_xraylib"
+[tool.coverage.report]
+skip_covered = true
+skip_empty = true
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "def impl", # numba overload implementations
+]
+
+[tool.coverage.run]
+branch = true
+omit = ["tests/*"]
+
+[tool.pyright]
+reportInvalidTypeForm = false
+
+[tool.pytest.ini_options]
+addopts = ['--import-mode=importlib', '--cov=numba_xraylib']
+testpaths = 'tests'
+
+[tool.pytest_env]
+NUMBA_CAPTURED_ERRORS='new_style'
 
 [tool.ruff]
 line-length = 88
@@ -31,14 +51,8 @@ select = ['ALL']
 ignore = ['N802', 'N803', 'N806', 'PLR0913', 'TD003']
 
 [tool.ruff.extend-per-file-ignores]
-'xraylib_overloads' = ['ANN001', 'ANN202']
+'numba_xraylib/__init__.py' = ['F401', 'PLC0415' ]
+'numba_xraylib/overload_xraylib.py' = ['ANN001', 'ANN202']
+'numba_xraylib/overload_xraylib_np.py' = ['ANN001', 'ANN202']
 
-[tool.pytest.ini_options]
-addopts = ["--import-mode=importlib",]
-testpaths = "tests"
-
-[tool.pyright]
-reportInvalidTypeForm = false
-
-[tool.pytest_env]
-NUMBA_CAPTURED_ERRORS='new_style'
+'tests/*' = ['D101', 'N801', 'S311']
