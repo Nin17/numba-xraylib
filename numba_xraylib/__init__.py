@@ -1,12 +1,8 @@
-"""_summary_."""
+"""numba-xraylib: Numba overloads of xraylib functions."""
 
 __version__ = "0.1.0"
 
+__all__ = ["_init", "config"]
+
 from .config import config
-
-
-def _init() -> None:
-    from . import xraylib_overloads_new  # noqa: F401
-
-
-__all__ = ["config", "xraylib_overloads"]
+from .utils import _init
