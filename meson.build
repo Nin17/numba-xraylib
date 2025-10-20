@@ -1,7 +1,7 @@
 project(
   'numba_xraylib',
   'c',
-  version: '0.2.5',
+  version: '0.2.0',
   default_options: [
     'buildtype=release',
   ]

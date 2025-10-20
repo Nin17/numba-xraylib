@@ -10,7 +10,7 @@ authors = [{name = 'Chris Ninham', email = 'christopher.ninham@alumni-insa-lyon.
 dependencies = ['numba>=0.57', 'numpy', 'tomli; python_version < "3.11"']
 description = 'A numba compatible wrapper of the xraylib library.'
 name = 'numba-xraylib'
-version = '0.2.5'
+version = '0.2.0'
 requires-python = '>=3.10'
 readme = "README.md"
 
