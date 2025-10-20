@@ -2,6 +2,9 @@
 build-backend = 'mesonpy'
 requires = ['meson-python']
 
+[tool.meson-python]
+allow-windows-internal-shared-libs = true
+
 [project]
 authors = [{name = 'Chris Ninham', email = 'christopher.ninham@alumni-insa-lyon.org'},]
 dependencies = ['numba>=0.57', 'numpy', 'tomli; python_version < "3.11"']
@@ -32,6 +35,8 @@ exclude_also = [
 [tool.coverage.run]
 branch = true
 omit = ["tests/*"]
+
+
 
 [tool.pyright]
 reportInvalidTypeForm = false
