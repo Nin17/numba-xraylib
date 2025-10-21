@@ -35,9 +35,10 @@ def get_extension_path(lib_name: str) -> str | None:
         The path to the library.
 
     """
-    search_path = Path(__file__).parent.parent
-    ext_path = f"{lib_name}*.*"
-    matches = filter(lambda x: not x.name.endswith(".pc"), search_path.rglob(ext_path))
+    search_path = Path(__file__).parent.parent.joinpath(".numba_xraylib.mesonpy.libs")
+    print(search_path)
+    ext_path = f"*{lib_name}*.*"
+    matches = filter(lambda x: not x.name.endswith(".pc"), search_path.glob(ext_path))
     try:
         return str(next(matches))
     except StopIteration:
@@ -45,9 +46,9 @@ def get_extension_path(lib_name: str) -> str | None:
 
 
 def _init() -> None:
-    _path = get_extension_path("libxrl")
+    _path = get_extension_path("xrl")
     if _path is None:
-        msg = "Could not find libxrl library bundled with numba_xraylib"
+        msg = "Could not find xraylib library bundled with numba_xraylib"
         warnings.warn(msg, stacklevel=2)
         _path = find_library("xrl")
     load_library_permanently(_path)
