@@ -11,4 +11,4 @@ pip install numba-xraylib
 
 ## Usage
 
-See [the examples](numba_xraylib_examples.ipynb)
+See [the examples](https://github.com/Nin17/xraylib_numba/blob/cdeabd0bda57da6e09c801b20f1c2725bb604eb8/docs/examples)
