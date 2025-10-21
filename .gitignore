@@ -11,6 +11,7 @@
 .vscode
 .DS_Store
 *.ipynb
+!docs/examples/*.ipynb
 *.whl
 *.tar.gz
 *.xrl

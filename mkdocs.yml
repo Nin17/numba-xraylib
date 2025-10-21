@@ -1,0 +1,69 @@
+# mkdocs.yml
+site_name: numba-xraylib
+repo_url: https://github.com/Nin17/numba-xraylib
+repo_name: Nin17/numba-xraylib
+
+theme:
+  name: "material"
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: pink
+      toggle:
+        icon: material/lightbulb
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: pink
+      toggle:
+        icon: material/lightbulb-outline
+        name: Switch to light mode
+        primary: pink
+
+
+
+plugins:
+  - search
+  - autorefs
+  - mkdocs-jupyter:
+        include: ["examples/*.ipynb"]
+
+nav:
+  - index.md
+  - examples/numba_xraylib_example.ipynb
+  - supported.md
+
+
+
+
+markdown_extensions:
+#   - pymdownx.arithmatex:
+#       generic: true
+  - admonition
+#   - pymdownx.details
+#   - pymdownx.superfences
+  - md_in_html
+  - tables
+#   - pymdownx.snippets:
+#       base_path: docs
+#   - footnotes
+#   - pymdownx.critic
+#   - pymdownx.caret
+#   - pymdownx.keys
+#   - pymdownx.mark
+#   - pymdownx.tilde
+#   - attr_list
+#   - pymdownx.blocks.caption
+
+extra_css:
+  - stylesheets/extra.css

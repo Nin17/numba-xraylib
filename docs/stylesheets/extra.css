@@ -1,0 +1,15 @@
+:root  > * {
+  --md-primary-fg-color:        #785EF0;
+  --md-primary-fg-color--light: #785EF0;
+  --md-primary-fg-color--dark:  #785EF0;
+}
+
+/* Center Markdown Tables (requires md_in_html extension) */
+.center-table {
+    text-align: center;
+}
+
+.md-typeset .center-table :is(td,th):not([align]) {
+    /* Reset alignment for table cells */
+    text-align: initial;
+}
