@@ -18,3 +18,5 @@
 .coverage
 .token
 site
+dist
+*.ruff_cache
