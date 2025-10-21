@@ -20,6 +20,7 @@ readme = "README.md"
 
 [project.optional-dependencies]
 dev = ['ruff', 'pytest', 'pytest-cov', 'pytest-env', 'pytest-randomly']
+doc = ['mkdocs', 'mkdocs-autorefs', 'mkdocs-jupyter', 'mkdocs-material']
 
 [project.entry-points.numba_extensions]
 init = 'numba_xraylib:_init'
