@@ -284,6 +284,22 @@ class XraylibNpTest(BaseTest):
         config.allow_nd = False
 
 
+def test_XRayInit() -> None:
+    @nb.njit
+    def impl_xrl() -> None:
+        return xraylib.XRayInit()
+
+    assert impl_xrl() is None  # noqa: S101
+
+    @nb.njit
+    def impl_xrl_np() -> None:
+        return xraylib.XRayInit()
+
+    assert impl_xrl_np() is None  # noqa: S101
+
+    # @nb.njit
+
+
 class TestAtomicWeight(XraylibTest, XraylibNpTest): ...
 
 

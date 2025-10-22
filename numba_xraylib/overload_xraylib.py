@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from numba import extending
+from numba import extending, types
 from numpy import array, uint64
 
 from .utils import check_types_xrl, convert_str, external_fcn, overload_xrl
@@ -39,6 +39,19 @@ def _error() -> NDArray[uint64]:
 @extending.register_jitable
 def _check_error(e: NDArray[uint64]) -> uint64:
     return e.item()  # type: ignore  # noqa: PGH003
+
+
+# --------------------------------------- void --------------------------------------- #
+
+
+@overload_xrl
+def _XRayInit():
+    xrl_fcn = types.ExternalFunction("XRayInit", types.void(types.void))
+
+    def impl():
+        return xrl_fcn(None)
+
+    return impl
 
 
 # --------------------------------------- 1 int -------------------------------------- #

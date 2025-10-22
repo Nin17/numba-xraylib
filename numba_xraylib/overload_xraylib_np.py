@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from numba import vectorize
+from numba import types, vectorize
 from numpy import broadcast_to
 
 from .utils import (
@@ -13,6 +13,19 @@ from .utils import (
     indices,
     overload_xrl_np,
 )
+
+# --------------------------------------- void --------------------------------------- #
+
+
+@overload_xrl_np
+def _XRayInit():
+    xrl_fcn = types.ExternalFunction("XRayInit", types.void(types.void))
+
+    def _impl():
+        return xrl_fcn(None)
+
+    return _impl
+
 
 # --------------------------------------- 1 int -------------------------------------- #
 
