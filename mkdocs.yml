@@ -42,6 +42,7 @@ nav:
   - index.md
   - examples/numba_xraylib_example.ipynb
   - supported.md
+  - xrl_license.md
 
 
 
