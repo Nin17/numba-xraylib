@@ -36,7 +36,6 @@ def get_extension_path(lib_name: str) -> str | None:
 
     """
     search_path = Path(__file__).parent.parent.joinpath(".numba_xraylib.mesonpy.libs")
-    print(search_path)
     ext_path = f"*{lib_name}*.*"
     matches = filter(lambda x: not x.name.endswith(".pc"), search_path.glob(ext_path))
     try:
